@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sentence shooter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  :root {
+    --bg: #050705; --panel: #0b110b; --line: #1e2a1e;
+    --fg: #cde5cd; --phos: #8fd48f; --bright: #aef0ae;
+    --dim: #4a6a4a; --gold: #d7ba7d; --danger: #d16969;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation;
+  }
+  #hud {
+    flex: none; display: flex; justify-content: space-between; gap: 12px;
+    padding: 8px 12px; font-size: 12px; color: var(--phos);
+    border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden;
+  }
+  #hud b { color: var(--gold); font-weight: normal; font-variant-numeric: tabular-nums; }
+  #sky { position: relative; flex: 1; overflow: hidden; background: var(--bg); }
+  #built {
+    flex: none; padding: 8px 12px; color: var(--bright); min-height: 1.5em;
+    border-top: 1px solid var(--line); white-space: nowrap; overflow-x: auto;
+  }
+  #bar {
+    flex: none; display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 12px 10px; font-size: 12px;
+  }
+  #msg { color: var(--dim); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .btn {
+    border: 1px solid var(--line); color: var(--phos); padding: 4px 14px; cursor: pointer;
+    background: none; font: inherit; flex: none; margin-left: 10px;
+  }
+  .btn:active { background: var(--phos); color: var(--bg); }
+  .star { position: absolute; width: 2px; height: 2px; background: #182818; pointer-events: none; }
+  .gword {
+    position: absolute; padding: 9px 13px; border: 1px solid #2e4e2e; background: var(--panel);
+    color: var(--fg); cursor: pointer; white-space: nowrap; font-size: 15px;
+  }
+  .gword.hintflash { border-color: var(--bright); color: var(--bright); box-shadow: 0 0 12px rgba(150,240,150,.55); }
+  .gword.danger { border-color: var(--danger); color: #f0b0b0; animation: dangerpulse .4s ease-in-out infinite alternate; }
+  @keyframes dangerpulse { from { box-shadow: 0 0 2px rgba(220,100,100,.3); } to { box-shadow: 0 0 16px rgba(220,100,100,.85); } }
+  #ship {
+    position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+    color: var(--phos); font-size: 24px; text-shadow: 0 0 12px rgba(140,220,140,.6); pointer-events: none;
+  }
+  #ship.hurt { color: var(--danger); text-shadow: 0 0 14px rgba(220,100,100,.9); }
+  .bullet { position: absolute; width: 3px; height: 14px; background: var(--bright); box-shadow: 0 0 7px var(--bright); pointer-events: none; }
+  .ring { position: absolute; border: 2px solid var(--bright); border-radius: 50%; pointer-events: none; animation: ringout .35s ease-out forwards; }
+  @keyframes ringout { from { width: 6px; height: 6px; opacity: 1; } to { width: 70px; height: 70px; opacity: 0; } }
+  .spark { position: absolute; width: 4px; height: 4px; background: var(--gold); pointer-events: none; }
+  .pop { position: absolute; color: var(--gold); font-size: 13px; pointer-events: none; animation: poprise .8s ease-out forwards; }
+  @keyframes poprise { to { transform: translateY(-48px); opacity: 0; } }
+  .gbanner {
+    position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%);
+    font-size: 30px; letter-spacing: 5px; color: var(--bright);
+    text-shadow: 0 0 20px rgba(150,240,150,.7); pointer-events: none;
+    animation: bannerzoom .9s ease-out forwards; white-space: nowrap;
+  }
+  @keyframes bannerzoom {
+    0% { transform: translate(-50%,-50%) scale(.4); opacity: 0; }
+    25% { opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(1.5); opacity: 0; }
+  }
+  .shake { animation: skyshake .25s; }
+  @keyframes skyshake {
+    0%,100% { transform: translate(0,0); } 25% { transform: translate(-5px,3px); }
+    50% { transform: translate(4px,-3px); } 75% { transform: translate(-3px,2px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shake, .gword.danger { animation: none; }
+  }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; text-align: center;
+    background: rgba(5,7,5,.88); cursor: pointer; z-index: 5; padding: 20px;
+  }
+  .overlay h1 {
+    margin: 0; font-size: clamp(26px, 7vw, 44px); letter-spacing: 6px; font-weight: normal;
+    color: var(--bright); text-shadow: 0 0 24px rgba(150,240,150,.6);
+  }
+  .overlay .sub { color: var(--dim); font-size: 13px; max-width: 34em; }
+  .overlay .tap { color: var(--gold); letter-spacing: 3px; animation: blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .overlay .stats { color: var(--phos); font-size: 14px; line-height: 1.9; }
+  .hidden { display: none !important; }
+</style>
+
+</head>
+<body>
+<div id="hud">
+  <span>score <b id="h-score">0</b> combo x<b id="h-combo">0</b></span>
+  <span id="h-lives">▲▲▲</span>
+  <span>best <b id="h-best">0</b></span>
+</div>
+<div id="sky">
+  <div id="ship" class="hidden">▲</div>
+  <div id="start" class="overlay">
+    <h1>SENTENCE SHOOTER</h1>
+    <div class="sub">a row of words falls from the sky.<br>
+      shoot the one that comes <b style="color:var(--bright)">NEXT</b> in the sentence — before it reaches your ship.<br>
+      decoys come from the same sentence: only word order saves you.</div>
+    <div class="tap">TAP TO START</div>
+    <div class="sub" id="start-best"></div>
+  </div>
+  <div id="over" class="overlay hidden">
+    <h1 style="color:var(--danger); text-shadow:0 0 24px rgba(220,100,100,.6)">GAME OVER</h1>
+    <div class="stats" id="over-stats"></div>
+    <div class="tap">TAP TO RETRY</div>
+  </div>
+</div>
+<div id="built">&gt;</div>
+<div id="bar">
+  <span id="msg"># shoot the words in sentence order</span>
+  <button class="btn" id="hintbtn">hint</button>
+</div>
+
+<script>
+'use strict';
+const SENTENCES = [
+  "The professor postponed the deadline because several students had fallen ill.",
+  "Despite the heavy rain, the field trip went ahead as planned.",
+  "The library will remain open until midnight during the exam period.",
+  "Students who miss the orientation must schedule a make-up session.",
+  "The results of the survey were published in the campus newspaper.",
+  "Having finished her thesis, she finally took a long vacation.",
+  "The new cafeteria offers a wider variety of vegetarian dishes.",
+  "Applicants are required to submit two letters of recommendation.",
+  "The lecture was so boring that half the audience fell asleep.",
+  "Renewable energy has become considerably cheaper over the past decade.",
+  "The committee unanimously approved the proposal to extend gym hours.",
+  "Not until the fire alarm stopped could the meeting continue.",
+  "The internship provides students with valuable hands-on experience.",
+  "Whoever leaves the laboratory last must switch off the equipment.",
+  "The bridge, built over a century ago, still carries daily traffic.",
+  "Scientists remain uncertain about the long-term effects of the drug.",
+  "The university plans to replace its aging shuttle buses next year.",
+  "Rarely has the debate team faced such a well-prepared opponent.",
+  "The workshop teaches participants how to manage their time effectively.",
+  "Most of the funding came from private donations rather than tuition.",
+  "The museum charges no admission fee on the first Monday of each month.",
+  "Unless enrollment increases, the evening course will be cancelled.",
+  "The author whose novel won the prize will visit our campus.",
+  "Volunteers spent the entire weekend cleaning up the riverbank.",
+  "The experiment must be repeated before the findings can be trusted.",
+  "Hardly anyone noticed the small error in the final report.",
+  "The dormitory renovation is expected to finish by late August.",
+  "Learning a second language becomes harder as people grow older.",
+  "The manager apologized for the delay and offered a full refund.",
+  "Both speakers agreed that the policy needs further discussion.",
+  "The recipe calls for two cups of flour and a pinch of salt.",
+  "Whether the concert takes place depends entirely on the weather.",
+  "The intern was praised for spotting the mistake before the launch.",
+  "Few people realize how much water a single household wastes daily.",
+  "The train had already departed by the time we reached the station.",
+  "The seminar on climate policy attracted researchers from nine countries.",
+  "To avoid extra fees, return the equipment before Friday noon.",
+  "The company doubled its profits by cutting unnecessary expenses.",
+  "Neither the map nor the guidebook mentioned the hidden trail.",
+  "She was the first student in her family to attend graduate school.",
+  "The tutoring center pairs new students with experienced mentors.",
+  "Only after the second review was the article accepted for publication.",
+  "The storm knocked out power across the northern half of the city.",
+  "Reading the instructions carefully can prevent most assembly errors.",
+  "The board postponed its decision until more data becomes available.",
+  "What impressed the judges most was the simplicity of the design.",
+  "The clinic offers free checkups to students during orientation week.",
+  "His explanation, though brief, answered every question we had.",
+  "The two theories differ mainly in how they treat human memory.",
+  "Attendance at the weekly seminars is optional but strongly encouraged.",
+];
+
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let game = null, audioCtx = null;
+
+function tone(f0, f1, dur, type, gain){
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + dur);
+  } catch(e){}
+}
+const sfx = {
+  pew:   () => tone(880, 180, .12, 'square',   .06),
+  boom:  () => tone(160,  40, .28, 'sawtooth', .12),
+  miss:  () => tone(110,  70, .22, 'square',   .08),
+  hit:   () => tone(140,  60, .18, 'sawtooth', .10),
+  clear: () => { tone(520,520,.09,'square',.07); setTimeout(()=>tone(660,660,.09,'square',.07),100); setTimeout(()=>tone(880,880,.16,'square',.07),200); },
+};
+
+function startGame(){
+  game = {
+    score: 0, combo: 0, lives: 3, solved: 0, shots: 0, hits: 0,
+    best: +(localStorage.getItem('shooter_best') || 0),
+    words: null, idx: 0, row: [], rowY: -40, rowSpeed: 60,
+    stars: [], over: false, recent: [], t0: 0, lastT: performance.now(), perfect: true,
+  };
+  $('start').classList.add('hidden');
+  $('over').classList.add('hidden');
+  $('ship').classList.remove('hidden');
+  const sky = $('sky');
+  for (const el of sky.querySelectorAll('.star, .gword, .bullet, .ring, .spark, .pop, .gbanner')) el.remove();
+  for (let i = 0; i < 36; i++){
+    const s = document.createElement('div'); s.className = 'star';
+    s.style.left = (Math.random()*100)+'%';
+    s._y = Math.random()*100; s._v = 18 + Math.random()*40;
+    s.style.top = s._y+'%';
+    sky.appendChild(s); game.stars.push(s);
+  }
+  $('msg').textContent = '# shoot the word that comes NEXT';
+  nextSentence();
+  requestAnimationFrame(gameFrame);
+}
+
+function pickSentence(){
+  const g = game;
+  const lv = Math.min(3, 1 + Math.floor(g.solved / 5));
+  const len = s => s.split(' ').length;
+  let cands = SENTENCES.filter(s => !g.recent.includes(s));
+  if (!cands.length){ g.recent = []; cands = SENTENCES.slice(); }
+  const tier = cands.filter(s => lv===1 ? len(s)<=10 : lv===2 ? (len(s)>=10 && len(s)<=12) : len(s)>=12);
+  const use = tier.length ? tier : cands;
+  return use[Math.floor(Math.random()*use.length)];
+}
+
+function nextSentence(){
+  const g = game;
+  const ans = pickSentence();
+  g.recent.push(ans); if (g.recent.length > 12) g.recent.shift();
+  g.words = ans.split(' ');
+  g.idx = 0; g.perfect = true; g.t0 = performance.now();
+  spawnRow();
+  updateHud();
+}
+
+function clearRow(){
+  for (const el of game.row) el.remove();
+  game.row = [];
+}
+
+function spawnRow(){
+  const g = game, sky = $('sky');
+  clearRow();
+  const correct = g.words[g.idx];
+  const others = g.words.filter((w, i) => i !== g.idx && w !== correct);
+  for (let i = others.length-1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); [others[i],others[j]] = [others[j],others[i]]; }
+  const decoys = [];
+  for (const w of others){ if (decoys.length >= 2) break; if (!decoys.includes(w)) decoys.push(w); }
+  while (decoys.length < 2){
+    const s = SENTENCES[Math.floor(Math.random()*SENTENCES.length)].split(' ');
+    const w = s[Math.floor(Math.random()*s.length)];
+    if (w !== correct && !decoys.includes(w)) decoys.push(w);
+  }
+  const cands = [correct, ...decoys];
+  for (let i = cands.length-1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); [cands[i],cands[j]] = [cands[j],cands[i]]; }
+  g.rowY = -40;
+  g.rowSpeed = Math.min(190, 58 + g.solved*8 + g.idx*2);
+  const W = sky.clientWidth, lane = W/cands.length;
+  cands.forEach((w, i) => {
+    const el = document.createElement('div'); el.className = 'gword'; el.textContent = w;
+    el._word = w;
+    sky.appendChild(el);
+    el.style.left = Math.max(2, Math.min(W - el.offsetWidth - 2, i*lane + (lane-el.offsetWidth)/2 + (Math.random()*16-8))) + 'px';
+    el.style.top = g.rowY + 'px';
+    el.addEventListener('pointerdown', ev => { ev.preventDefault(); shoot(el); });
+    g.row.push(el);
+  });
+}
+
+function updateHud(){
+  const g = game;
+  $('h-score').textContent = g.score;
+  $('h-combo').textContent = g.combo;
+  $('h-best').textContent = g.best;
+  $('h-lives').textContent = '▲'.repeat(Math.max(0, g.lives)) || '—';
+  $('built').textContent = '> ' + g.words.slice(0, g.idx).join(' ');
+}
+
+function shoot(el){
+  const g = game;
+  if (!g || g.over || !g.row.includes(el)) return;
+  g.shots++;
+  if (el._word === g.words[g.idx]){
+    sfx.pew();
+    const sky = $('sky');
+    const b = document.createElement('div'); b.className = 'bullet';
+    const x1 = el.offsetLeft + el.offsetWidth/2, y1 = el.offsetTop + el.offsetHeight/2;
+    b.style.left = (sky.clientWidth/2)+'px'; b.style.top = (sky.clientHeight - 28)+'px';
+    sky.appendChild(b);
+    b.style.transition = 'all 80ms linear';
+    requestAnimationFrame(()=>{ b.style.left = x1+'px'; b.style.top = y1+'px'; });
+    g.hits++; g.combo++; g.idx++;
+    const height = Math.max(0, Math.round((sky.clientHeight - y1) / 6));
+    const pts = Math.round((100 + height) * (1 + Math.min(10, g.combo)*0.1));
+    setTimeout(()=>{
+      b.remove(); sfx.boom(); explodeAt(x1, y1, '+'+pts);
+      g.score += pts;
+      if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter_best', g.best); }
+      if (g.combo >= 5) shake();
+      clearRow();
+      if (g.idx === g.words.length) sentenceClear();
+      else spawnRow();
+      updateHud();
+    }, 85);
+  } else {
+    sfx.miss(); shake(); g.combo = 0; g.perfect = false;
+    el.style.opacity = .3; el.style.pointerEvents = 'none';
+    $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> not "' + esc(el._word) + '" — combo reset';
+    updateHud();
+  }
+}
+
+function explodeAt(x, y, popText){
+  const sky = $('sky');
+  const r = document.createElement('div'); r.className = 'ring';
+  r.style.left = x+'px'; r.style.top = y+'px';
+  r.style.transform = 'translate(-50%, -50%)';
+  sky.appendChild(r); setTimeout(()=>r.remove(), 400);
+  for (let i = 0; i < 7; i++){
+    const s = document.createElement('div'); s.className = 'spark';
+    s.style.left = x+'px'; s.style.top = y+'px';
+    sky.appendChild(s);
+    const a = Math.random()*Math.PI*2, d = 24 + Math.random()*30;
+    s.style.transition = 'all .45s ease-out';
+    requestAnimationFrame(()=>{ s.style.transform = 'translate('+Math.cos(a)*d+'px,'+Math.sin(a)*d+'px)'; s.style.opacity = '0'; });
+    setTimeout(()=>s.remove(), 500);
+  }
+  if (popText){
+    const p = document.createElement('div'); p.className = 'pop'; p.textContent = popText;
+    p.style.left = x+'px'; p.style.top = (y-12)+'px';
+    sky.appendChild(p); setTimeout(()=>p.remove(), 850);
+  }
+}
+
+function shake(){
+  const sky = $('sky');
+  sky.classList.remove('shake'); void sky.offsetWidth; sky.classList.add('shake');
+}
+
+function banner(text){
+  const b = document.createElement('div'); b.className = 'gbanner';
+  b.textContent = text; $('sky').appendChild(b);
+  setTimeout(()=>b.remove(), 950);
+}
+
+function sentenceClear(){
+  const g = game;
+  sfx.clear(); g.solved++;
+  const secs = Math.round((performance.now() - g.t0)/1000);
+  let bonus = Math.max(0, 80 - secs*3);
+  if (g.perfect){ bonus += 150; banner('PERFECT'); } else banner('CLEAR');
+  g.score += bonus;
+  if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter_best', g.best); }
+  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(g.words.join(' ')) + '</span> +' + bonus;
+  setTimeout(()=>{ if (game && !game.over) nextSentence(); }, 900);
+}
+
+function loseLife(){
+  const g = game;
+  sfx.hit(); shake();
+  const ship = $('ship');
+  ship.classList.add('hurt'); setTimeout(()=>ship.classList.remove('hurt'), 500);
+  g.lives--; g.combo = 0; g.perfect = false;
+  if (g.lives <= 0){ gameOver(); return; }
+  $('msg').innerHTML = '<span style="color:var(--danger)">✦ it got through!</span> it was "' + esc(g.words[g.idx]) + '" — ' + g.lives + ' left';
+  spawnRow();
+  updateHud();
+}
+
+function gameOver(){
+  const g = game; g.over = true;
+  clearRow();
+  if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter_best', g.best); }
+  $('over-stats').innerHTML =
+    'score <b style="color:var(--gold)">' + g.score + '</b><br>' +
+    'sentences cleared: ' + g.solved + '<br>' +
+    'accuracy: ' + (g.shots ? Math.round(100*g.hits/g.shots) : 0) + '%<br>' +
+    'best: ' + g.best;
+  $('over').classList.remove('hidden');
+  updateHud();
+}
+
+function gameFrame(now){
+  const g = game;
+  if (!g) return;
+  const dt = Math.min(0.05, (now - g.lastT)/1000); g.lastT = now;
+  if (!g.over){
+    const sky = $('sky'), skyH = sky.clientHeight;
+    g.rowY += g.rowSpeed * dt;
+    const danger = g.rowY > skyH - 170;
+    for (const el of g.row){
+      el.style.top = g.rowY + 'px';
+      el.classList.toggle('danger', danger);
+    }
+    for (const s of g.stars){
+      s._y += s._v * dt / skyH * 100;
+      if (s._y > 100) s._y -= 100;
+      s.style.top = s._y + '%';
+    }
+    if (g.row.length && g.rowY + 38 >= skyH - 44) loseLife();
+    requestAnimationFrame(gameFrame);
+  } else {
+    requestAnimationFrame(gameFrame);
+  }
+}
+
+$('start').addEventListener('pointerdown', ev => { ev.preventDefault(); startGame(); });
+$('over').addEventListener('pointerdown', ev => { ev.preventDefault(); startGame(); });
+$('hintbtn').addEventListener('click', () => {
+  const g = game;
+  if (!g || g.over) return;
+  const el = g.row.find(x => x._word === g.words[g.idx] && x.style.pointerEvents !== 'none');
+  if (!el) return;
+  g.combo = 0; g.perfect = false;
+  el.classList.add('hintflash');
+  setTimeout(()=>el.classList.remove('hintflash'), 700);
+  updateHud();
+});
+$('start-best').textContent = 'best: ' + (+(localStorage.getItem('shooter_best') || 0));
+</script>
+</body>
+</html>
