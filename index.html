@@ -72,7 +72,8 @@
 <body>
 <div id="hud">
   <span>score <b id="h-score">0</b></span>
-  <span>combo x<b id="h-combo">0</b> · <span id="h-weapon">SINGLE</span></span>
+  <span>combo x<b id="h-combo">0</b> · <span id="h-weapon">MK-I</span></span>
+  <span id="h-tabs" style="cursor:pointer">⚡<b>2</b></span>
   <span id="h-lives">▲▲▲</span>
   <span>best <b id="h-best">0</b></span>
 </div>
@@ -85,6 +86,8 @@
       <b>TYPE MODE</b> (keyboard): type the next word — every letter fires a missile.<br>
       <b>TAP MODE</b> (touch): tap the next word — lock on, mash for more missiles.<br>
       combo upgrades your launcher MK-I → MK-IV. wrong input = combo reset.<br>
+      <b>TAB</b> completes the word you started — exactly like your shell.<br>
+      costs one ⚡ (tap the ⚡ badge on touch). earn ⚡ only with <b>PERFECT</b> sentences — tab-assisted clears never count.<br>
       let the next word reach your line and you lose a ship — and your launcher.
     </div>
     <div class="tap">PRESS ANY KEY TO TYPE · TAP TO PLAY BY TOUCH</div>
@@ -207,6 +210,7 @@ function startGame(mode){
     best: +(localStorage.getItem('shooter2_best') || 0),
     ship: { x: W/2 }, missiles: [], words: [], parts: [], stars: [],
     lock: null, volley: 0, volleyT: 0, freeze: 0,
+    tabs: 2, perfect: true, nextLife: 10000,
     idx: 0, sentence: null, recent: [],
     speed: 24, over: false, lastT: performance.now(), t0: 0,
   };
@@ -239,7 +243,7 @@ function nextSentence(){
   const ans = pickSentence();
   g.recent.push(ans); if (g.recent.length > 12) g.recent.shift();
   g.sentence = ans.split(' ');
-  g.idx = 0; g.t0 = performance.now();
+  g.idx = 0; g.t0 = performance.now(); g.perfect = true;
   g.speed = Math.min(70, 24 + g.solved * 3.5);
   g.words = []; g.missiles = []; g.lock = null; g.volley = 0;
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
@@ -264,6 +268,7 @@ function updateHud(){
   $('h-score').textContent = g.score;
   $('h-combo').textContent = g.combo;
   $('h-weapon').textContent = WEAPONS[weaponLv()-1];
+  $('h-tabs').innerHTML = '⚡<b>' + g.tabs + '</b>';
   $('h-lives').textContent = '▲'.repeat(Math.max(0, g.lives)) || '—';
   $('h-best').textContent = g.best;
   $('built').textContent = '> ' + g.sentence.slice(0, g.idx).join(' ');
@@ -348,7 +353,7 @@ function handleKey(key){
     launchMissile(t, 1, letter);
     for (let i = 1; i < weaponLv(); i++) launchMissile(t, 0);   // escort missiles: pure spectacle
   } else if (SIG.test(key)){
-    g.plinks++; g.combo = 0; g.score = Math.max(0, g.score - 5);
+    g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     t.err = 0.35;
     sfx.plink(); shake();
     $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> "' + esc(t.text) + '" — next letter is "' + esc(expected) + '"';
@@ -356,13 +361,57 @@ function handleKey(key){
   }
 }
 
+// TAB = shell-style completion: finishes the word you already started (never a bomb)
+function handleTab(){
+  if (!g || g.over) return;
+  const t = g.words.find(w => w.order === g.idx);
+  if (!t) return;
+  const started = g.mode === 'type' ? t.consumed > 0 : (g.lock === t && t.hp < t.maxhp);
+  if (!started){
+    sfx.plink();
+    $('msg').textContent = g.mode === 'type'
+      ? '# tab completes what you started — type at least one letter first'
+      : '# tab finishes a target you already damaged — hit it first';
+    return;
+  }
+  if (g.mode === 'type' && t.consumed >= t.text.length) return;
+  if (g.tabs <= 0){
+    sfx.plink();
+    $('msg').textContent = '# no ⚡ left — only PERFECT sentences refill it';
+    return;
+  }
+  g.tabs--; g.perfect = false; t.auto = true; g.lock = t;
+  tone(300, 900, .12, 'square', .06);
+  if (g.mode === 'type'){
+    while (t.consumed < t.text.length){
+      const ch = t.text[t.consumed]; t.consumed++;
+      launchMissile(t, 1, SIG.test(ch) ? ch : undefined);
+    }
+  } else {
+    for (let i = 0; i < t.hp; i++) launchMissile(t, 1);
+  }
+  updateHud();
+}
+
+// OpenTyrian's galaga-mode rule (tyrian2.c:1147): score thresholds grant lives,
+// each threshold recedes, and a full stock converts to points instead of vanishing
+function checkExtraLife(){
+  while (g.score >= g.nextLife){
+    if (g.lives < 5){ g.lives++; banner('1UP', true); sfx.up(); buzz([30,50,30]); }
+    else g.score += 1000;
+    g.nextLife += 25000;
+  }
+}
+
 function killWord(word){
   g.words = g.words.filter(w => w !== word);
   if (g.lock === word){ g.lock = null; g.volley = 0; }
-  g.kills++; g.combo++; g.idx++;
+  g.kills++; g.idx++;
+  if (!word.auto) g.combo++;   // tab-completed kills feed no combo
   const lvBefore = WEAPONS[weaponLv()-1];
-  const pts = Math.round(100 * (1 + Math.min(12, g.combo)*0.1));
+  const pts = Math.round((word.auto ? 50 : 100) * (1 + Math.min(12, g.combo)*0.1));
   g.score += pts;
+  checkExtraLife();
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
   sfx.boom(); buzz(25); shake();
   spawnParts(word.x + word.w/2, word.y + word.h/2, 14, '#d7ba7d', 160);
@@ -380,14 +429,21 @@ function sentenceClear(){
   const bonus = Math.max(0, 150 - secs*4);
   g.score += bonus;
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
-  sfx.clear(); banner('CLEAR');
-  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(g.sentence.join(' ')) + '</span> +' + bonus;
+  sfx.clear();
+  let earned = '';
+  if (g.perfect){
+    banner('PERFECT', true);
+    if (g.tabs < 4){ g.tabs++; earned = '  <span style="color:var(--gold)">+1 ⚡</span>'; sfx.up(); }
+    else { g.score += 500; earned = '  <span style="color:var(--gold)">⚡ FULL +500</span>'; }  // OpenTyrian consolation-prize rule
+  } else banner('CLEAR');
+  checkExtraLife();
+  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(g.sentence.join(' ')) + '</span> +' + bonus + earned;
   setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 1000);
 }
 
 function loseLife(word){
   sfx.hit(); buzz(120); shake();
-  g.lives--; g.combo = 0; g.lock = null; g.volley = 0;
+  g.lives--; g.combo = 0; g.perfect = false; g.lock = null; g.volley = 0;
   spawnParts(g.ship.x, H - 40, 20, '#d16969', 200);
   if (g.lives <= 0){ gameOver(); return; }
   $('msg').innerHTML = '<span style="color:var(--danger)">✦ "' + esc(word.text) + '" got through!</span> gun reset — ' + g.lives + ' ships left';
@@ -560,7 +616,9 @@ cv.addEventListener('pointerdown', e => {
 });
 $('start').addEventListener('pointerdown', e => { e.preventDefault(); begin('tap'); });
 $('over').addEventListener('pointerdown', e => { e.preventDefault(); begin(lastMode); });
+$('h-tabs').addEventListener('pointerdown', e => { e.preventDefault(); handleTab(); });
 window.addEventListener('keydown', e => {
+  if (e.key === 'Tab'){ e.preventDefault(); handleTab(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('start').classList.contains('hidden')){
     if (e.key.length === 1){ e.preventDefault(); begin('type'); }
