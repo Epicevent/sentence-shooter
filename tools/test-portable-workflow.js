@@ -16,7 +16,8 @@ const { createTraceServer } = require('./dev-server');
     const page=await fetch(base+'/game');
     const html=await page.text();
     assert.strictEqual(page.status,200);
-    assert.ok(html.includes('SENTENCE SHOOTER'),'portable server must serve the real game');
+    assert.ok(html.includes('id="start-title"') && html.includes("'VECTOR BREACH'") && html.includes("'CORE BREACH'"),
+      'portable server must serve the real paired game');
 
     const source=path.join(__dirname,'..','fixtures','traces','resize-recovery-after.json');
     const raw=fs.readFileSync(source);

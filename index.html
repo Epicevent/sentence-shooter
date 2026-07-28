@@ -6,9 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
   :root {
-    --bg: #050705; --line: #1e2a1e;
-    --fg: #cde5cd; --phos: #8fd48f; --bright: #aef0ae;
-    --dim: #4a6a4a; --gold: #d7ba7d; --danger: #d16969;
+    --bg: #03080b; --line: #153747;
+    --fg: #cbe8ef; --phos: #73d5ee; --bright: #9fe9fb;
+    --dim: #49798a; --gold: #f0bd67; --danger: #d16969;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -17,6 +17,10 @@
     font: 14px/1.5 "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
     display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
     -webkit-user-select: none; user-select: none; touch-action: none;
+  }
+  body[data-variant="B"] {
+    --bg: #060612; --line: #323062; --fg: #dddafb; --phos: #9f9af4;
+    --bright: #bdb8ff; --dim: #66649a; --gold: #5ee6df;
   }
   #hud {
     position: relative; z-index: 4;
@@ -27,6 +31,15 @@
   #hud b { color: var(--gold); font-weight: normal; font-variant-numeric: tabular-nums; }
   #wrap { position: relative; flex: 1; overflow: hidden; }
   #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #prompt {
+    position: absolute; z-index: 2; left: 10px; right: 10px; top: 8px;
+    padding: 8px 10px; border: 1px solid rgba(74,106,74,.45);
+    background: rgba(5,7,5,.86); color: var(--fg); pointer-events: none;
+    box-shadow: 0 8px 24px rgba(5,7,5,.65); font-size: 12px; line-height: 1.45;
+  }
+  #prompt .speaker { color: var(--gold); }
+  #prompt .reply { color: var(--bright); }
+  #prompt .blank { color: var(--dim); letter-spacing: 2px; }
   #built {
     flex: none; padding: 8px 12px; color: var(--bright); min-height: 1.5em;
     border-top: 1px solid var(--line); white-space: nowrap; overflow-x: auto; font-size: 13px;
@@ -72,32 +85,33 @@
     50% { transform: translate(4px,-3px); } 75% { transform: translate(-3px,2px); }
   }
   @media (prefers-reduced-motion: reduce) { .shake { animation: none; } }
+  @media (max-width: 520px) {
+    #hud { gap: 5px; padding: 7px 6px; font-size: 10px; }
+    #h-best-wrap, #h-weapon { display: none; }
+    #prompt { left: 6px; right: 6px; font-size: 11px; }
+  }
+  .overlay .mode-kicker { color: var(--gold); letter-spacing: 4px; font-size: 12px; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <div id="hud">
+  <span id="h-variant">A</span>
   <span>score <b id="h-score">0</b></span>
   <span>combo x<b id="h-combo">0</b> · <span id="h-weapon">MK-I</span></span>
-  <span id="h-tabs" style="cursor:pointer">⚡<b>2</b></span>
+  <span id="h-tabs" style="cursor:pointer">⚡<b>4</b></span>
   <span id="h-shields">🛡<b>1</b></span>
   <span id="h-lives">▲▲▲</span>
-  <span>best <b id="h-best">0</b></span>
+  <span id="h-best-wrap">best <b id="h-best">0</b></span>
 </div>
 <div id="wrap">
   <canvas id="cv"></canvas>
+  <div id="prompt" class="hidden"></div>
   <div id="resize-warning" class="resize-warning hidden">WINDOW TOO SHORT<br>ENLARGE TO RESUME</div>
   <div id="start" class="overlay">
-    <h1>SENTENCE SHOOTER</h1>
-    <div class="sub">
-      the whole sentence descends in formation. destroy it <b>IN ORDER</b>.<br>
-      <b>keyboard and tap both work, anytime</b>: type the next word letter by letter, or tap it.<br>
-      combo upgrades your launcher MK-I → MK-IV. wrong input = combo reset.<br>
-      items — <b>TAB ⚡</b> completes the word you started, like your shell (earn: PERFECT sentence, or a 12-combo).<br>
-      <b>🛡</b> auto-repels one breakthrough and regroups every live word on screen (earn: clear a sentence fast). long words pay more.<br>
-      full stock converts to points. hesitate and the formation accelerates; mistakes make it lunge.<br>
-      let the next word reach your line and you lose a ship — and your launcher.
-    </div>
+    <div class="mode-kicker" id="start-mode">TEST A</div>
+    <h1 id="start-title">BREACH</h1>
+    <div class="sub" id="start-rules"></div>
     <div class="tap">TAP OR PRESS ANY KEY TO LAUNCH</div>
     <div class="sub" id="start-best"></div>
   </div>
@@ -108,66 +122,198 @@
   </div>
 </div>
 <div id="built">&gt;</div>
-<div id="msg"># destroy the sentence in order</div>
+<div id="msg"># build the reply under fire</div>
 
 <script>
 'use strict';
-const SENTENCES = [
-  "The professor postponed the deadline because several students had fallen ill.",
-  "Despite the heavy rain, the field trip went ahead as planned.",
-  "The library will remain open until midnight during the exam period.",
-  "Students who miss the orientation must schedule a make-up session.",
-  "The results of the survey were published in the campus newspaper.",
-  "Having finished her thesis, she finally took a long vacation.",
-  "The new cafeteria offers a wider variety of vegetarian dishes.",
-  "Applicants are required to submit two letters of recommendation.",
-  "The lecture was so boring that half the audience fell asleep.",
-  "Renewable energy has become considerably cheaper over the past decade.",
-  "The committee unanimously approved the proposal to extend gym hours.",
-  "Not until the fire alarm stopped could the meeting continue.",
-  "The internship provides students with valuable hands-on experience.",
-  "Whoever leaves the laboratory last must switch off the equipment.",
-  "The bridge, built over a century ago, still carries daily traffic.",
-  "Scientists remain uncertain about the long-term effects of the drug.",
-  "The university plans to replace its aging shuttle buses next year.",
-  "Rarely has the debate team faced such a well-prepared opponent.",
-  "The workshop teaches participants how to manage their time effectively.",
-  "Most of the funding came from private donations rather than tuition.",
-  "The museum charges no admission fee on the first Monday of each month.",
-  "Unless enrollment increases, the evening course will be cancelled.",
-  "The author whose novel won the prize will visit our campus.",
-  "Volunteers spent the entire weekend cleaning up the riverbank.",
-  "The experiment must be repeated before the findings can be trusted.",
-  "Hardly anyone noticed the small error in the final report.",
-  "The dormitory renovation is expected to finish by late August.",
-  "Learning a second language becomes harder as people grow older.",
-  "The manager apologized for the delay and offered a full refund.",
-  "Both speakers agreed that the policy needs further discussion.",
-  "The recipe calls for two cups of flour and a pinch of salt.",
-  "Whether the concert takes place depends entirely on the weather.",
-  "The intern was praised for spotting the mistake before the launch.",
-  "Few people realize how much water a single household wastes daily.",
-  "The train had already departed by the time we reached the station.",
-  "The seminar on climate policy attracted researchers from nine countries.",
-  "To avoid extra fees, return the equipment before Friday noon.",
-  "The company doubled its profits by cutting unnecessary expenses.",
-  "Neither the map nor the guidebook mentioned the hidden trail.",
-  "She was the first student in her family to attend graduate school.",
-  "The tutoring center pairs new students with experienced mentors.",
-  "Only after the second review was the article accepted for publication.",
-  "The storm knocked out power across the northern half of the city.",
-  "Reading the instructions carefully can prevent most assembly errors.",
-  "The board postponed its decision until more data becomes available.",
-  "What impressed the judges most was the simplicity of the design.",
-  "The clinic offers free checkups to students during orientation week.",
-  "His explanation, though brief, answered every question we had.",
-  "The two theories differ mainly in how they treat human memory.",
-  "Attendance at the weekly seminars is optional but strongly encouraged.",
+const AB_CONFIG = (() => {
+  try {
+    const params = new URLSearchParams(location.search);
+    return { variant:params.get('ab')?.toUpperCase() === 'A' ? 'A' : 'B',
+      seed:Math.abs(parseInt(params.get('seed') || '20260728',10)) || 20260728 };
+  } catch(e) { return { variant:'B', seed:20260728 }; }
+})();
+const AB_VARIANT = AB_CONFIG.variant, AB_SEED = AB_CONFIG.seed;
+if (document.body) document.body.dataset.variant = AB_VARIANT;
+document.getElementById('start-mode').textContent = 'TEST ' + AB_VARIANT;
+document.getElementById('start-title').textContent = AB_VARIANT === 'A' ? 'VECTOR BREACH' : 'CORE BREACH';
+document.getElementById('start-rules').innerHTML = AB_VARIANT === 'A'
+  ? 'a straight tactical grid. destroy chunks <b>IN GRAMMATICAL ORDER</b> to drive the siege backward.<br>' +
+    'typing lights every matching target; narrow to one, then <b>TAB TO CONFIRM</b>.<br>' +
+    'with no focus, <b>TAB ⚡</b> auto-builds one chunk. arrow keys dodge while the mouse fires.'
+  : 'a radial signal core. destroy chunks <b>IN GRAMMATICAL ORDER</b> to drive the siege backward.<br>' +
+    'typing links every matching node to the core; narrow to one, then <b>TAB TO CONFIRM</b>.<br>' +
+    '<b>GRAZE</b> hostile shots to charge SYNC; a real word impact releases the core.<br>' +
+    'with no focus, <b>TAB ⚡</b> auto-builds one chunk. arrow keys dodge while the mouse fires.';
+const ITEMS = [
+  { id:'decision', ask:"Why hasn't the committee announced its decision?", lead:'They', tail:'.',
+    answer:['are waiting','for the chair','to review','the final report'], decoys:['waited'] },
+  { id:'library', ask:'Can you tell me when the library closes?', lead:'I think', tail:'.',
+    answer:['it stays open','until ten','during','exam week'], decoys:['does it stay open'] },
+  { id:'workshop', ask:'Why did Maya miss the workshop?', lead:'She said', tail:'.',
+    answer:['that her train','had been delayed','by','the storm'], decoys:['was delaying'] },
+  { id:'volunteers', ask:"Are the volunteers ready for tomorrow's event?", lead:'Most of them', tail:'.',
+    answer:['have already finished','setting up','the registration area'], decoys:['has already finished'] },
+  { id:'research', ask:'Do you know who will lead the new research team?', lead:'', tail:'.',
+    answer:['The professor','who joined us','last semester','was selected','to lead it'], decoys:['which joined us'] },
+  { id:'introduction', ask:'What did the manager ask you to change?', lead:'She wanted', tail:'.',
+    answer:['the introduction','to be shorter','and','more specific'], decoys:['is shorter'] },
+  { id:'bus', ask:'Why are you taking the earlier bus?', lead:'I need', tail:'.',
+    answer:['to arrive','before','the orientation','begins'], decoys:['will begin'] },
+  { id:'laptop', ask:'Did the store replace your laptop?', lead:'They offered', tail:'.',
+    answer:['to repair it','instead of','giving me','a new one'], decoys:['repaired it'] },
+  { id:'tour', ask:'How was the campus tour?', lead:'', tail:'.',
+    answer:['The student','who showed us around','was','extremely','helpful'], decoys:['were'] },
+  { id:'class', ask:'Why did the class end early?', lead:'The instructor', tail:'.',
+    answer:['had finished','everything','that she','planned to cover'], decoys:['has finished'] },
+  { id:'form', ask:'Can I submit the form tomorrow?', lead:'You should ask', tail:'.',
+    answer:['whether','the office','will accept','a late submission'], decoys:['does the office accept'] },
+  { id:'weekend', ask:'What are you working on this weekend?', lead:'My team', tail:'.',
+    answer:['is developing','a plan','to reduce','energy use'], decoys:['develops'] },
+
+  // 58 TOEFL sentence-building items transcribed from the six workbook photos supplied by the user.
+  { id:'photo-d01-training', source:'photo-diagnostic-01', ask:'Were there any questions during the training session?', lead:'The new employees wanted', tail:'.',
+    answer:['to know','if they','would be able','to access the system'], decoys:['accessing the system'] },
+  { id:'photo-d02-exhibit', source:'photo-diagnostic-02', ask:'Which exhibit do you recommend visiting?', lead:'', tail:'.',
+    answer:['The one downtown','is great, but','it is hard','to get tickets'], decoys:[] },
+  { id:'photo-d03-project-delay', source:'photo-diagnostic-03', ask:"My group still hasn't finished the project.", lead:'', tail:'?',
+    answer:['Have you','talked to','your professor','about the delay'], decoys:['talk to your professor'] },
+  { id:'photo-d04-former-job', source:'photo-diagnostic-04', ask:'Can I ask why you left your former job?', lead:'I', tail:'.',
+    answer:['am looking for','a position','that better fits','my long-term goals'], decoys:['that better fit'] },
+  { id:'photo-d05-order', source:'photo-diagnostic-05', ask:'What did the waitress say about our order?', lead:'', tail:'.',
+    answer:['She said','the dishes','are being','prepared now'], decoys:['prepare now'] },
+  { id:'photo-d06-email-file', source:'photo-diagnostic-06', ask:'Your report last week was very detailed.', lead:'', tail:'?',
+    answer:['Would you like','me to email','you','the file'], decoys:[] },
+  { id:'photo-d07-bike', source:'photo-diagnostic-07', ask:'Why did you decide to get a new bike?', lead:'', tail:'.',
+    answer:['Someone stole mine','while it was','parked in front of','the store'], decoys:['did stole mine'] },
+  { id:'photo-d08-assignment', source:'photo-diagnostic-08', ask:"Why haven't Harper and Bill started working on the assignment yet?", lead:'', tail:'.',
+    answer:['They just learned','what needs','to be','done'], decoys:['why'] },
+  { id:'photo-d09-sales-data', source:'photo-diagnostic-09', ask:'May I ask why you requested the sales data?', lead:'My team', tail:'.',
+    answer:['is working','on a plan','to increase revenue','over the next quarter'], decoys:['works on a plan'] },
+  { id:'photo-d10-library', source:'photo-diagnostic-10', ask:'Why did you stay late at the library yesterday?', lead:'I', tail:'.',
+    answer:['was using','some reference books','that cannot be','checked out'], decoys:[] },
+
+  { id:'photo-58-01-report', source:'photo-p58-01', ask:'Have you finished writing the report?', lead:'', tail:' yet.',
+    answer:["I haven't",'had the chance','to do','it'], decoys:[] },
+  { id:'photo-58-02-keys', source:'photo-p58-02', ask:"I can't remember where I put my keys.", lead:'', tail:'?',
+    answer:['When was','the last time','you had','them'], decoys:['Who had them'] },
+  { id:'photo-58-03-assignment-due', source:'photo-p58-03', ask:'I saw you talking to the professor after class yesterday.', lead:'She', tail:'.',
+    answer:['wanted to remind me','when the assignment','will be','due'], decoys:['a'] },
+  { id:'photo-58-04-final-edit', source:'photo-p58-04', ask:'What did the director mention regarding the final edit?', lead:'', tail:'.',
+    answer:['He asked','which scenes','should be','reshot'], decoys:['which scenes were reshot'] },
+  { id:'photo-58-05-umbrella', source:'photo-p58-05', ask:'Where did you find your umbrella?', lead:'I', tail:'.',
+    answer:['checked every place','I visited','last weekend'], decoys:[] },
+  { id:'photo-58-06-budget', source:'photo-p58-06', ask:'Did the committee talk about the budget proposal?', lead:'Yes,', tail:'.',
+    answer:['they asked','if further adjustments','were','needed'], decoys:[] },
+  { id:'photo-58-07-community', source:'photo-p58-07', ask:'What did your neighbor say about the community meeting?', lead:'', tail:'.',
+    answer:['She wondered','who was responsible','for organizing','it'], decoys:['who was responsible to organize'] },
+  { id:'photo-58-08-software', source:'photo-p58-08', ask:"I heard there were issues with yesterday's software launch.", lead:'', tail:'.',
+    answer:['Customers had trouble','downloading it','from our website'], decoys:['download it'] },
+
+  { id:'photo-64-01-instructions', source:'photo-p64-01', ask:"The professor's instructions on the assignment were a bit unclear.", lead:'I', tail:'.',
+    answer:["couldn't figure out",'what she expected','us','to do'], decoys:['how she expected'] },
+  { id:'photo-64-02-flights', source:'photo-p64-02', ask:'Have you arranged the flights for our trip?', lead:'No,', tail:'.',
+    answer:['I have not','been able','to book','them'], decoys:['I have not be'] },
+  { id:'photo-64-03-training', source:'photo-p64-03', ask:'Kelly is not coming to the training session today.', lead:'Can you', tail:'?',
+    answer:['tell me','why she',"can't make",'it'], decoys:['why she is making it'] },
+  { id:'photo-64-04-orientation', source:'photo-p64-04', ask:'Are you going to the orientation for new students?', lead:'Do you', tail:'?',
+    answer:['know','what time','it','starts'], decoys:['where it starts'] },
+  { id:'photo-64-05-recipe', source:'photo-p64-05', ask:'Did you try the recipe I sent you?', lead:'', tail:'.',
+    answer:['I had trouble finding','some of the ingredients,','but still managed','to make it'], decoys:[] },
+  { id:'photo-64-06-manager', source:'photo-p64-06', ask:'What did the manager want to know?', lead:'', tail:'.',
+    answer:['He wondered','how the new staff members','were','doing'], decoys:['do'] },
+  { id:'photo-64-07-concert', source:'photo-p64-07', ask:"We're planning to go to the band's concert this weekend.", lead:'Can you', tail:'?',
+    answer:['tell me','if tickets','are still','available'], decoys:['if tickets is available'] },
+  { id:'photo-64-08-festival', source:'photo-p64-08', ask:'Did I see you speaking to Eric earlier?', lead:'He', tail:' on Friday.',
+    answer:['asked','if I would like','to go to','the school festival'], decoys:[] },
+  { id:'photo-64-09-meeting', source:'photo-p64-09', ask:"Why didn't you join us for the meeting this morning?", lead:'', tail:'.',
+    answer:['I was late','for work','due to','a bad headache'], decoys:[] },
+  { id:'photo-64-10-doctor', source:'photo-p64-10', ask:"I have a doctor's appointment tomorrow.", lead:'', tail:'?',
+    answer:['May I ask','where','it','hurts'], decoys:['where it is hurting'] },
+
+  { id:'photo-66-11-photos', source:'photo-p66-11', ask:"The workshop photos were posted on the company's internal site.", lead:'Really?', tail:'.',
+    answer:["I didn't know",'they were','uploaded','already'], decoys:['they was uploaded'] },
+  { id:'photo-66-12-catering', source:'photo-p66-12', ask:"Who catered last year's holiday party for the company?", lead:'I think John', tail:'.',
+    answer:['might remember','which service','we','hired'], decoys:[] },
+  { id:'photo-66-13-garden', source:'photo-p66-13', ask:'Did you have a good time on your trip?', lead:'The botanical garden', tail:'.',
+    answer:['that we visited','was','very','relaxing'], decoys:['it was relaxing'] },
+  { id:'photo-66-14-language', source:'photo-p66-14', ask:'I signed up for a language class this semester.', lead:'I would', tail:'.',
+    answer:['love to know','what language','you are','taking up'], decoys:['love know'] },
+  { id:'photo-66-15-shoulder', source:'photo-p66-15', ask:'What did the therapist say about your shoulder pain?', lead:'', tail:'.',
+    answer:['She recommended','an exercise that','targets the muscle','causing the pain'], decoys:['an exercise is'] },
+  { id:'photo-66-16-camera', source:'photo-p66-16', ask:'Where did you get your camera?', lead:'I', tail:'.',
+    answer:['bought it','secondhand','from','an online store'], decoys:[] },
+  { id:'photo-66-17-apartment', source:'photo-p66-17', ask:"I'm thinking of moving into a new apartment.", lead:"It's about", tail:'.',
+    answer:['time','you got','out of','that neighborhood'], decoys:[] },
+  { id:'photo-66-18-idea', source:'photo-p66-18', ask:'What did your boss think of your idea?', lead:'She', tail:'.',
+    answer:['wants me','to write','a formal proposal','for management'], decoys:['to writing'] },
+  { id:'photo-66-19-major', source:'photo-p66-19', ask:"I'm considering changing my major to something else.", lead:'', tail:'?',
+    answer:['Do you know','what','the requirements are','for changing majors'], decoys:['the requirements is'] },
+  { id:'photo-66-20-pizza', source:'photo-p66-20', ask:'This pizza you brought home tastes delicious.', lead:'I', tail:'.',
+    answer:['got it','from a new place','that just opened','down the street'], decoys:[] },
+
+  { id:'photo-68-01-envelopes', source:'photo-p68-01', ask:'Do you have any spare envelopes I could use?', lead:'', tail:'?',
+    answer:['Have you tried','looking in','the supply closet'], decoys:['look in the supply closet'] },
+  { id:'photo-68-02-representative', source:'photo-p68-02', ask:'Who was chosen to represent our class at the competition?', lead:'', tail:'.',
+    answer:['I have no idea','who ended up','being','selected'], decoys:['not being selected'] },
+  { id:'photo-68-03-project', source:'photo-p68-03', ask:'Are you worried about having to lead the new project?', lead:'My only concern', tail:'.',
+    answer:['is whether','we have','the time','to complete it'], decoys:['the time completing it'] },
+  { id:'photo-68-04-anthony', source:'photo-p68-04', ask:'Can you tell me what Anthony was asking about just now?', lead:'He was', tail:'.',
+    answer:['curious about','what I was planning','for','the weekend'], decoys:['did'] },
+  { id:'photo-68-05-leave', source:'photo-p68-05', ask:'Did the staff say anything about the new leave policy?', lead:'They', tail:'.',
+    answer:['wanted to know','when it','would','take effect'], decoys:[] },
+  { id:'photo-68-06-coffee', source:'photo-p68-06', ask:'We need a new coffee machine for the break room.', lead:'Do you', tail:'?',
+    answer:['remember','where we bought','the last one'], decoys:['who'] },
+  { id:'photo-68-07-books', source:'photo-p68-07', ask:'When will the next shipment of books arrive?', lead:'', tail:'.',
+    answer:['They are','scheduled to be','delivered in','a couple of days'], decoys:['delivering in a couple of days'] },
+  { id:'photo-68-08-computers', source:'photo-p68-08', ask:"I heard our company's getting us new computers.", lead:'', tail:'?',
+    answer:['Do you know','when that is','supposed to','happen'], decoys:['suppose to happen'] },
+  { id:'photo-68-09-party', source:'photo-p68-09', ask:'Are the Wilsons coming to the party this weekend?', lead:'', tail:'?',
+    answer:["Don't you know","they can't",'make it','this weekend'], decoys:[] },
+  { id:'photo-68-10-musical', source:'photo-p68-10', ask:"I'm excited to see Ellie perform in the musical.", lead:'', tail:'?',
+    answer:['Did she tell','you',"what role she's playing",'in the show'], decoys:['play'] },
+
+  { id:'photo-70-01-training', source:'photo-p70-01', ask:'Why did the HR department reschedule the training session?', lead:'', tail:'.',
+    answer:['The trainer was sick',"and couldn't come",'on','the original date'], decoys:[] },
+  { id:'photo-70-02-car', source:'photo-p70-02', ask:'Can you tell me why you bought the car?', lead:'I', tail:'.',
+    answer:['needed something','reliable for','my long','daily commute'], decoys:[] },
+  { id:'photo-70-03-math', source:'photo-p70-03', ask:'Do you know anyone who can help Sean with his math assignment?', lead:'Have', tail:'?',
+    answer:['you asked','the student services office','if they','offer tutoring'], decoys:[] },
+  { id:'photo-70-04-makeup', source:'photo-p70-04', ask:"I heard tomorrow's class with Professor Clark has been canceled.", lead:'On', tail:'?',
+    answer:['which day','is the makeup class','scheduled'], decoys:[] },
+  { id:'photo-70-05-credit-card', source:'photo-p70-05', ask:"I'm thinking about signing up for a new credit card.", lead:'', tail:'?',
+    answer:['Which types','of benefits','do you','prioritize'], decoys:[] },
+  { id:'photo-70-06-office', source:'photo-p70-06', ask:'Why did you leave the office so suddenly yesterday?', lead:'', tail:'.',
+    answer:['Something urgent','came up',"that I couldn't",'ignore'], decoys:['that I ignored'] },
+  { id:'photo-70-07-shelter', source:'photo-p70-07', ask:"I'm considering volunteering at the local animal shelter.", lead:'', tail:'?',
+    answer:['Have you spoken','to someone','who already','volunteers there'], decoys:[] },
+  { id:'photo-70-08-midterm', source:'photo-p70-08', ask:'Did Professor Lee mention anything about the midterm schedule?', lead:'', tail:'.',
+    answer:['She told us','it should','be finalized','in the next few days'], decoys:['it is finalized'] },
+  { id:'photo-70-09-production', source:'photo-p70-09', ask:'Can you confirm if production is on schedule?', lead:"We've", tail:'.',
+    answer:['encountered','some unexpected issues','that might cause','a small delay'], decoys:['that might to cause'] },
+  { id:'photo-70-10-seminar', source:'photo-p70-10', ask:'What did the department chair ask you?', lead:'', tail:'.',
+    answer:['He wondered','who would be','presenting at','the seminar'], decoys:['how would be'] },
 ];
+const SENTENCES = ITEMS; // compatibility name for portable harnesses
+function makeRng(seed){
+  let state = seed >>> 0;
+  return () => { state = (state * 1664525 + 1013904223) >>> 0; return state / 4294967296; };
+}
+function textSeed(text){
+  let h = 2166136261;
+  for (const c of text){ h ^= c.charCodeAt(0); h = Math.imul(h,16777619); }
+  return h >>> 0;
+}
+const ITEM_ORDER = (() => {
+  const list = ITEMS.slice(), rng = makeRng(AB_SEED);
+  for (let i=list.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [list[i],list[j]]=[list[j],list[i]]; }
+  return list;
+})();
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cv = $('cv'), ctx = cv.getContext('2d');
+$('h-variant').textContent = 'TEST ' + AB_VARIANT;
 let W = 0, H = 0, dpr = 1;
 
 function resize(){
@@ -213,6 +359,8 @@ function buzz(ms){ try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e
 // ---------- game state ----------
 const WEAPONS = ['MK-I', 'MK-II', 'MK-III', 'MK-IV'];
 let g = null;
+let loopStarted = false;
+const moveInput = { left:false, right:false };
 
 // ---------- play-trace recorder: whole sessions become bulk learning data ----------
 const TRACE = { meta: {}, samples: [], events: [] };
@@ -227,13 +375,19 @@ function traceStart(mode){
   activeTraceBanners.clear();
   TRACE.meta = {
     started: performance.now(), mode, pipeline: 4, ua: navigator.userAgent.slice(0, 60),
-    w: W, h: H, dpr, at: Date.now(), hz: 8,
+    w: W, h: H, dpr, at: Date.now(), hz: 8, ab_variant:AB_VARIANT, ab_seed:AB_SEED,
     // Compact scene rows retain enough state to reconstruct/query the changing playfield.
     word_fields: ['order','render_x','render_y','w','h','hp','maxhp','consumed','committed','flags','block_vis','text_vis','banner_cover','alpha','logic_y','recoil_ms','logic_x'],
     missile_fields: ['x','y','vx','vy','target_order','dmg','letter'],
+    enemy_shot_fields: ['x','y','vx','vy','source_order','radius','grazed','graze_armed'],
+    escort_shot_fields: ['x','y','vx','vy','target_x','target_y'],
     particle_fields: ['x','y','vx','vy','life_ms','age_ms','color','text'],
+    pulse_fields: ['x','y','radius','max_radius','life_ms','age_ms','color'],
     banner_fields: ['id','text','gold','x','y','w','h','opacity'],
     ui_fields: ['score','weapon_level','built_line','message','game_over'],
+    scene_fields: ['i','freeze_ms','danger','viewport_paused','pressure_y','recoil_bank',
+      'delivery_ms','cargo_order','dock_x','jam_ms','move_dir','ship','lock','inventory',
+      'sync','words','missiles','enemyShots','escortShots','particles','pulses','banners','shake','ui'],
   };
   TRACE.samples.length = 0; TRACE.events.length = 0;
   traceOn = true; traceAcc = 0;
@@ -249,7 +403,7 @@ function visiblePct(r){
   const area = rectArea(r);
   return area ? Math.round(100 * rectIntersection(r, { x: 0, y: 0, w: W, h: H }) / area) : 0;
 }
-const RECOIL_MS = 520, MIN_PLAY_HEIGHT = 460;
+const RECOIL_MS = 520, MIN_PLAY_HEIGHT = 500;
 function recoilProgress(w, now){
   if (!Number.isFinite(w.recoilAt)) return 1;
   return Math.max(0, Math.min(1, ((now || performance.now()) - w.recoilAt) / RECOIL_MS));
@@ -257,20 +411,35 @@ function recoilProgress(w, now){
 function wordVisualX(w, now){
   now = now || performance.now();
   const p = recoilProgress(w, now);
-  if (p >= 1 || !Number.isFinite(w.recoilFromX)) return w.x;
-  if (Number.isFinite(w.recoilRailX)){
-    if (p < .2){ const q=1-Math.pow(1-p/.2,3); return w.recoilFromX+(w.recoilRailX-w.recoilFromX)*q; }
-    if (p <= .8) return w.recoilRailX;
-    const q=1-Math.pow(1-(p-.8)/.2,3); return w.recoilRailX+(w.x-w.recoilRailX)*q;
+  let visualX;
+  if (p >= 1 || !Number.isFinite(w.recoilFromX)){
+    if (g && g.variant === 'B'){
+      const shift = Math.sin((g.visualPhase || 0) + (w.row || 0)*1.7 + (w.col || 0)*.8) * Math.min(12,W*.018);
+      visualX=Math.max(8,Math.min(W-w.w-8,w.x+shift));
+    } else visualX=w.x;
+  } else if (Number.isFinite(w.recoilRailX)){
+    if (p < .2){ const q=1-Math.pow(1-p/.2,3); visualX=w.recoilFromX+(w.recoilRailX-w.recoilFromX)*q; }
+    else if (p <= .8) visualX=w.recoilRailX;
+    else { const q=1-Math.pow(1-(p-.8)/.2,3); visualX=w.recoilRailX+(w.x-w.recoilRailX)*q; }
+  } else if (w.recoilSettleEarly && p <= .8) visualX=w.recoilFromX;
+  else {
+    const q = w.recoilSettleEarly ? Math.max(0,(p-.8)/.2) : p;
+    const eased = 1-Math.pow(1-q,3);
+    visualX=w.recoilFromX+(w.x-w.recoilFromX)*eased;
   }
-  if (w.recoilSettleEarly && p <= .8) return w.recoilFromX;
-  const q = w.recoilSettleEarly ? Math.max(0,(p-.8)/.2) : p;
-  const eased = 1-Math.pow(1-q,3);
-  return w.recoilFromX+(w.x-w.recoilFromX)*eased;
+  const hitAge=Number.isFinite(w.hitAt) ? now-w.hitAt : Infinity;
+  if(hitAge>=0 && hitAge<110){
+    const q=hitAge/110;
+    visualX+=(w.hitDir||1)*Math.sin(q*Math.PI*3)*(1-q)*6;
+  }
+  return visualX;
 }
 function wordVisualY(w, now){
   now = now || performance.now();
-  if (!Number.isFinite(w.recoilFromY) || !Number.isFinite(w.recoilAt)) return w.y;
+  if (!Number.isFinite(w.recoilFromY) || !Number.isFinite(w.recoilAt))
+    return g && g.variant === 'B'
+      ? w.y + Math.cos((g.visualPhase || 0)+(w.row || 0)*1.3+(w.col || 0)) * 4
+      : w.y;
   const p = recoilProgress(w, now);
   if (p >= 1) return w.y;
   if (Number.isFinite(w.recoilRailX)){
@@ -285,21 +454,44 @@ function wordVisualY(w, now){
   return w.recoilFromY + (w.y - w.recoilFromY) * eased + kick;
 }
 function formationStageY(w){
-  const rows = Math.max(1, Math.ceil(g.sentence.length / 3));
-  const top = Math.max(44, Math.min(68, H * 0.08));
-  const bottom = Math.max(top, Math.min(H * 0.38, H - 260));
-  const gap = rows > 1 ? (bottom - top) / (rows - 1) : 0;
+  const perRow = g.perRow || 3;
+  const live = g.words.filter(x => !x.resolved);
+  // Resolved blocks can leave holes. Count occupied row indices, not merely live/perRow,
+  // or two survivors in one column collapse onto each other during a shield/life rebound.
+  const rows = Math.max(1,...live.map(x => (Number.isInteger(x.row) ? x.row : 0)+1));
+  const top = W < 520 ? 104 : 112;
+  const blockH = Math.max(34,...g.words.filter(x=>!x.resolved).map(x=>x.h||34));
+  const safeBottom = Math.max(top,(H-64)-wingHoldClearance()-blockH-6);
+  const bottom = g.variant==='B' && W>=520 ? Math.max(top,Math.min(safeBottom,H-250)) : safeBottom;
+  const gap = rows > 1 ? Math.min(58,(bottom-top)/(rows-1)) : 0;
   return top + (w.row || 0) * gap;
 }
 function formationLaneX(w){
-  const margin = 8, col = Number.isInteger(w.col) ? w.col : (w.order % 3);
-  const laneW = Math.max(1, (W - margin*2) / 3);
+  const margin = 8, perRow = g.perRow || 3;
+  const col = Number.isInteger(w.col) ? w.col : (w.order % perRow);
+  const laneW = Math.max(1, (W - margin*2) / perRow);
   return Math.max(margin, Math.min(W - margin - w.w, margin + col*laneW + (laneW-w.w)/2));
+}
+function perRowForWidth(){ return W < 520 ? 1 : W < 720 ? 2 : 3; }
+function relayoutFormationWidth(){
+  if (!g || !g.words) return;
+  g.perRow = g.variant === 'B' ? (W < 520 ? 1 : 2) : perRowForWidth();
+  const margin=8, laneW=(W-margin*2)/g.perRow;
+  ctx.font = '15px "Cascadia Mono", Consolas, monospace';
+  g.words.forEach((w,index) => {
+    const slot = Number.isInteger(w.slot) ? w.slot : index;
+    w.row=Math.floor(slot/g.perRow); w.col=slot%g.perRow;
+    w.w=Math.min(laneW-10,ctx.measureText(w.text).width+22);
+    w.x=Math.max(margin,Math.min(W-margin-w.w,
+      margin+w.col*laneW+(laneW-w.w)/2+(w.jitterX||0)));
+    w.baseX=w.x;
+  });
 }
 function reflowViewport(oldW, oldH){
   if (!g || g.over) return;
   const now = performance.now(), wasPaused = !!g.viewportPaused;
-  for (const w of g.words) w.x = formationLaneX(w);
+  const widthChanged = oldW > 0 && Math.abs(oldW-W) > 1;
+  relayoutFormationWidth();
   g.ship.x = Math.max(14, Math.min(W - 14, g.ship.x));
 
   if (H < MIN_PLAY_HEIGHT){
@@ -322,10 +514,13 @@ function reflowViewport(oldW, oldH){
     g.messageBeforePause = null;
     recoilFormation('viewport_resume', true);
     tEv('viewport_resume', { w:roundTrace(W), h:roundTrace(H), paused_ms:Math.round(pausedMs) });
+  } else if (widthChanged){
+    recoilFormation('viewport_reflow',true);
   } else if (oldH > 0 && oldW > 0){
     const scaleY = Math.max(1, H - 64) / Math.max(1, oldH - 64);
     for (const w of g.words){
       w.y *= scaleY;
+      if (Number.isFinite(w.threatY)) w.threatY *= scaleY;
       w.recoilFromY = null; w.recoilFromX = null; w.recoilRailX = null; w.recoilAt = null;
     }
   }
@@ -352,13 +547,14 @@ function stabilizeFormationRows(now){
     words.forEach((w,row) => { w.row = row; });
   }
 }
-function recoilFormation(reason, visibleStart){
-  const now = performance.now(), movement = [];
-  g.nextWingRecoilAt = now;
+function recoilFormation(reason, visibleStart, at){
+  const now = Number.isFinite(at) ? at : performance.now(), movement = [];
   const settleEarly = g.words.some(w => !w.resolved && Math.abs(wordVisualX(w,now)-w.x)>1);
   stabilizeFormationRows(now);
   for (const w of g.words){
     if (w.resolved) continue;
+    w.holding = false;
+    w.threatY = null;
     const target=formationStageY(w);
     if (visibleStart){
       w.y=target; w.recoilFromY=Math.min(H-64-w.h,target+24); w.recoilFromX=w.x;
@@ -369,34 +565,6 @@ function recoilFormation(reason, visibleStart){
   }
   tEv('formation_recoil', { reason, visible_start:!!visibleStart, duration:RECOIL_MS, words:movement });
   return movement;
-}
-function recoilRailX(w, now, startAt){
-  startAt = Number.isFinite(startAt) ? startAt : now;
-  const laneW=(W-16)/3;
-  const candidates=[8, 8+laneW-w.w/2, 8+laneW*2-w.w/2, W-8-w.w]
-    .map(x=>Math.max(8,Math.min(W-8-w.w,x)));
-  const others=g.words.filter(x=>x!==w && !x.resolved);
-  const score=x=>others.reduce((gap,o)=>{
-    const activeRail=Number.isFinite(o.recoilRailX) && o.recoilAt < startAt+RECOIL_MS && o.recoilAt+RECOIL_MS > startAt;
-    const ox=activeRail ? o.recoilRailX : o.x;
-    return Math.min(gap, Math.max(ox-(x+w.w), x-(ox+o.w)));
-  }, Infinity);
-  return candidates.reduce((best,x)=>score(x)>score(best)?x:best,candidates[0]);
-}
-function safeWingY(w, now){
-  const top=Math.max(44,Math.min(68,H*.08)), gap=Math.max(40,w.h+8);
-  const others=g.words.filter(x=>x!==w && !x.resolved);
-  for (let slot=0;slot<6;slot++){
-    const y=top+slot*gap;
-    if (y+w.h>Math.min(H*.38,H-260)) break;
-    const clear=others.every(o=>{
-      const active=Number.isFinite(o.recoilRailX) && recoilProgress(o,now)<1;
-      const oy=active ? o.y : wordVisualY(o,now);
-      return y+w.h+6<=oy || oy+o.h+6<=y;
-    });
-    if (clear) return y;
-  }
-  return top;
 }
 function traceBannerRows(){
   const wrapRect = $('wrap').getBoundingClientRect();
@@ -416,8 +584,9 @@ function traceScene(now){
   const bannerRects = banners.map(b => ({ x: b[3], y: b[4], w: b[5], h: b[6], opacity: b[7] / 100 }));
   const words = g.words.map(w => {
     const isNext = !w.resolved && w.order === g.idx;
-    const claimAge = w.resolved ? now - w.resolvedAt : 0;
-    const alpha = w.resolved ? (g.idx === g.sentence.length ? 0.22 : Math.max(0.3, 0.72 - claimAge/900)) : 1;
+    // Logical death is immediate, but the enemy remains fully alive-looking until
+    // the reserved missile damage physically lands (MapleStory-style settlement).
+    const alpha = 1;
     const renderX = wordVisualX(w, now), renderY = wordVisualY(w, now);
     const block = { x: renderX, y: renderY, w: w.w, h: w.h };
     const textW = Math.max(1, w.w - 22);
@@ -426,22 +595,36 @@ function traceScene(now){
     for (const b of bannerRects) bannerCover = Math.max(bannerCover,
       rectArea(textRect) ? rectIntersection(textRect, b) / rectArea(textRect) * b.opacity : 0);
     const flags = (w.resolved ? 1 : 0) | (w.settled ? 2 : 0) | (isNext ? 4 : 0) |
-      (w.err > 0 ? 8 : 0) | (w.flash > 0 ? 16 : 0) | (w.auto ? 32 : 0);
+      (w.err > 0 ? 8 : 0) | (w.flash > 0 ? 16 : 0) | (w.auto ? 32 : 0) |
+      (w.holding ? 64 : 0) | (w.isDecoy ? 128 : 0);
     return [w.order, roundTrace(renderX), roundTrace(renderY), roundTrace(w.w), roundTrace(w.h),
       w.hp, w.maxhp, w.consumed || 0, w.committed || 0, flags,
       visiblePct(block), visiblePct(textRect), Math.round(bannerCover * 100), Math.round(alpha * 100),
-      roundTrace(w.y), Math.max(0, Math.round(RECOIL_MS - (now - (w.recoilAt || 0)))), roundTrace(w.x)];
+      roundTrace(isNext && Number.isFinite(w.threatY) ? w.threatY : w.y),
+      Math.max(0, Math.round(RECOIL_MS - (now - (w.recoilAt || 0)))), roundTrace(w.x)];
   });
   const missiles = g.missiles.map(m => [roundTrace(m.x), roundTrace(m.y), roundTrace(m.vx), roundTrace(m.vy),
     m.target ? m.target.order : null, m.dmg || 0, m.letter || '']);
+  const enemyShots = (g.enemyShots || []).map(s => [roundTrace(s.x),roundTrace(s.y),
+    roundTrace(s.vx),roundTrace(s.vy),s.source,s.r,s.grazed?1:0,s.grazeArmed?1:0]);
+  const escortShots = (g.escortShots || []).map(s => [roundTrace(s.x),roundTrace(s.y),
+    roundTrace(s.vx),roundTrace(s.vy),roundTrace(s.tx),roundTrace(s.ty)]);
   const particles = g.parts.map(p => [roundTrace(p.x), roundTrace(p.y), roundTrace(p.vx), roundTrace(p.vy),
     Math.round(p.life * 1000), Math.round(p.t * 1000), p.color || '', p.text || '']);
+  const pulses = (g.pulses || []).map(p => [roundTrace(p.x),roundTrace(p.y),roundTrace(p.r),roundTrace(p.maxR),
+    Math.round(p.life*1000),Math.round(p.t*1000),p.color||'']);
   return {
     i: g.idx, f: Math.max(0, Math.round(g.freeze * 1000)), d: g.danger ? 1 : 0,
-    vp: g.viewportPaused ? 1 : 0,
+    vp: g.viewportPaused ? 1 : 0, pressure_y:roundTrace(threatLineY()),
+    recoil_bank:roundTrace(g.recoilBank || 0),
+    // Retained as nullable schema fields so historical DELIVERY traces still analyze,
+    // but both live variants now use the selected BREACH rules.
+    delivery_ms:null, cargo_order:null, dock_x:null,
+    jam_ms:Math.max(0,Math.round((g.shotJamUntil || 0)-now)),
+    move_dir:(moveInput.right?1:0)-(moveInput.left?1:0),
     ship: [roundTrace(g.ship.x), roundTrace(H - 34)], lock: g.lock ? g.lock.order : null,
     inv: [g.tabs, g.shields, g.lives, g.combo],
-    words, missiles, particles,
+    sync:Math.round(g.sync||0), words, missiles, enemyShots, escortShots, particles, pulses,
     banners, shake: $('wrap').classList.contains('shake') ? 1 : 0,
     ui: [g.score, weaponLv(), g.builtDrawn || '', $('msg').textContent || '', g.over ? 1 : 0],
   };
@@ -451,7 +634,8 @@ function traceSample(eff){
   const nw = g.words.find(w => w.order === g.idx);
   TRACE.samples.push({
     t: Math.round(performance.now() - TRACE.meta.started),
-    d: nw ? Math.round((H - 64) - (nw.y + nw.h)) : null,   // threat distance: next word to deadline
+    d: nw
+      ? Math.round((H - 64) - ((Number.isFinite(nw.threatY) ? nw.threatY : nw.y) + nw.h)) : null,
     n: g.words.filter(w => !w.resolved).length,
     q: g.words.filter(w => w.resolved).length,              // presentation-only deaths still on screen
     sp: Math.round(eff), c: g.combo, l: g.lives, m: g.missiles.length,
@@ -491,84 +675,159 @@ function startGame(mode){
     mode: mode || 'tap',
     score: 0, combo: 0, lives: 3, solved: 0, kills: 0, plinks: 0,
     best: +(localStorage.getItem('shooter2_best') || 0),
-    ship: { x: W/2 }, missiles: [], fireQueues: [], words: [], parts: [], stars: [],
-    lock: null, freeze: 0, missGraceUntil: 0,
-    tabs: 2, shields: 1, perfect: true, nextLife: 10000,
+    ship: { x: W/2, manualUntil:0 }, missiles: [], enemyShots: [], escortShots: [], fireQueues: [], words: [], parts: [], pulses: [], stars: [],
+    lock: null, typePrefix: '', freeze: 0, missGraceUntil: 0,
+    shotJamUntil:0, lastMissAt:0, missChain:0,
+    tabs: TAB_START, shields: 1, perfect: true, nextLife: 10000,
     wordT: 0, beatT: 0,
-    idx: 0, sentence: null, recent: [],
-    speed: 24, eff: 24, builtDrawn: '', viewportPaused: false, viewportPauseAt: 0, nextWingRecoilAt: 0,
+    idx: 0, sentence: null, item: null, recent: [], perRow:3,
+    speed: 12, eff: 12, builtDrawn: '', viewportPaused: false, viewportPauseAt: 0,
     messageBeforePause: null, over: false, lastT: performance.now(), t0: 0,
+    waveGraceUntil:0, enemyFireT:1.2, variant:AB_VARIANT, recoilBank:0,
+    visualPhase:0, sync:0, grazes:0, coreBursts:0, pendingSentenceClear:false,
   };
+  moveInput.left = false; moveInput.right = false;
   for (let i = 0; i < 44; i++)
     g.stars.push({ x: Math.random()*W, y: Math.random()*H, v: 30 + Math.random()*70 });
   $('start').classList.add('hidden');
   $('over').classList.add('hidden');
-  $('msg').textContent = g.mode === 'type'
-    ? '# TYPE the word that comes NEXT — every letter is a missile'
-    : '# TAP the word that comes NEXT — committed volleys free the next target immediately';
+  $('prompt').classList.remove('hidden');
+  $('msg').textContent = '# TYPE to focus candidates · TAB confirms one focus · arrows dodge while mouse fires';
   traceStart(g.mode);
   tEv('item_stock', { reason: 'start', tabs: g.tabs, shields: g.shields });
   nextSentence();
   if (H < MIN_PLAY_HEIGHT) reflowViewport(W, H);
   else $('resize-warning').classList.add('hidden');
-  requestAnimationFrame(frame);
+  if (!loopStarted){
+    loopStarted = true;
+    requestAnimationFrame(frame);
+  }
 }
 
 // significant characters (typed); punctuation like commas/periods auto-fires
 const SIG = /[a-z0-9'-]/i;
 const MISS_BURST_MS = 220;  // one mistyped word should not become one punishment per letter
+const TAB_START = 4, TAB_CAP = 6, TAB_COMBO_STEP = 4;
+const SYNC_MAX = 100, GRAZE_GAIN = 20, GRAZE_RADIUS = 34;
+const VARIANT_RULES = {
+  // A: denser counterfire, but correct grammar acts as a bullet parry.
+  A:{ baseSpeed:9.2, speedCap:11.4, solvedScale:1.012, hesitationAccel:.17, hesitationCap:3.5,
+    enemySpeed:175, enemyGrowth:4, enemyGrowthCap:45, fireStart:1.42, fireMin:.9,
+    kickBase:12, kickCombo:1, kickCap:18, clearRadius:185,
+    wrongLungeBase:22, wrongLungeChain:8, wrongJamBase:430, wrongJamChain:140, retaliationBase:2 },
+  // B shares the selected BREACH rules; only its radial presentation differs.
+  B:{ baseSpeed:9.2, speedCap:11.4, solvedScale:1.012, hesitationAccel:.17, hesitationCap:3.5,
+    enemySpeed:175, enemyGrowth:4, enemyGrowthCap:45, fireStart:1.42, fireMin:.9,
+    kickBase:12, kickCombo:1, kickCap:18, clearRadius:185,
+    wrongLungeBase:22, wrongLungeChain:8, wrongJamBase:430, wrongJamChain:140, retaliationBase:2 },
+};
+function variantRules(variant){ return VARIANT_RULES[variant || (g && g.variant) || AB_VARIANT]; }
+const WING_HOLD_CLEARANCE = 144;
+function wingHoldClearance(){ return Math.min(WING_HOLD_CLEARANCE,Math.max(84,H*.2)); }
 function sigLen(text){ let n = 0; for (const c of text) if (SIG.test(c)) n++; return n; }
+function typingForm(text){ let out = ''; for (const c of text) if (SIG.test(c)) out += c.toLowerCase(); return out; }
+function choiceIdentity(text){ return String(text).trim().replace(/\s+/g,' ').toLowerCase(); }
+function validateItems(items){
+  for (const item of items){
+    const choices = [...item.answer,...(item.decoys||[])];
+    if (!item.ask || !item.answer.length) throw new Error('invalid TOEFL item: '+item.id);
+    for (let i=0;i<choices.length;i++) for (let j=i+1;j<choices.length;j++){
+      if (typingForm(choices[i]) === typingForm(choices[j]) && choiceIdentity(choices[i]) !== choiceIdentity(choices[j]))
+        throw new Error('typing collision in '+item.id+': '+choices[i]+' / '+choices[j]);
+    }
+  }
+}
+validateItems(ITEMS);
 
 function pickSentence(){
   const lv = Math.min(3, 1 + Math.floor(g.solved / 4));
-  const len = s => s.split(' ').length;
-  let cands = SENTENCES.filter(s => !g.recent.includes(s));
-  if (!cands.length){ g.recent = []; cands = SENTENCES.slice(); }
-  const tier = cands.filter(s => lv===1 ? len(s)<=10 : lv===2 ? (len(s)>=10 && len(s)<=12) : len(s)>=12);
+  const len = item => item.answer.length;
+  let cands = ITEM_ORDER.filter(item => !g.recent.includes(item.id));
+  if (!cands.length){ g.recent = []; cands = ITEM_ORDER.slice(); }
+  const tier = cands.filter(item => lv===1 ? len(item)<=4 : lv===2 ? len(item)>=4 : len(item)>=5);
   const use = tier.length ? tier : cands;
-  return use[Math.floor(Math.random()*use.length)];
+  return use[0];
 }
+
+function replyText(count, cursor){
+  if (!g || !g.sentence) return '';
+  const item = g.item || { lead:'', tail:'' };
+  const pieces = [];
+  if (item.lead) pieces.push(item.lead);
+  pieces.push(...g.sentence.slice(0, count));
+  if (cursor && count < g.sentence.length) pieces.push('▁');
+  let text = pieces.filter(Boolean).join(' ');
+  if (count >= g.sentence.length && item.tail) text += item.tail;
+  return text.trim();
+}
+
+function fullReply(){ return replyText(g.sentence.length, false); }
 
 function nextSentence(){
   // Do not let a fast clear erase the tail of its own hit animation. Any volley that has
   // not physically arrived by the transition deadline lands as a final cleanup blast.
   for (const w of g.words.slice()) if (w.resolved && !w.settled) settleWord(w, true);
-  const ans = pickSentence();
-  g.recent.push(ans); if (g.recent.length > 12) g.recent.shift();
-  g.sentence = ans.split(' ');
-  g.idx = 0; g.t0 = performance.now(); g.perfect = true;
-  g.nextWingRecoilAt = g.t0;
+  const item = pickSentence();
+  g.recent.push(item.id); if (g.recent.length > 12) g.recent.shift();
+  g.item = item;
+  g.sentence = item.answer.slice();
+  g.idx = 0; g.t0 = performance.now(); g.perfect = true; g.typePrefix = ''; g.pendingSentenceClear=false;
+  g.shotJamUntil = 0; g.lastMissAt = 0; g.missChain = 0;
+  g.waveGraceUntil = g.t0 + 2200;
+  g.enemyFireT = variantRules(g.variant).fireStart;
+  g.recoilBank = 0;
+  g.visualPhase = 0; g.escortShots = [];
   if (g.viewportPaused) g.viewportPauseAt = g.t0;
-  // ZType-measured curve: enemies are slow (~29px/s) but growth is geometric (+5%/wave)
-  g.speed = Math.min(95, 34 * Math.pow(1.05, g.solved));
+  const rules = variantRules(g.variant);
+  g.speed = Math.min(rules.speedCap,rules.baseSpeed*Math.pow(rules.solvedScale,g.solved));
   g.wordT = 0;
-  g.words = []; g.missiles = []; g.fireQueues = []; g.lock = null;
+  g.words = []; g.missiles = []; g.enemyShots = []; g.fireQueues = []; g.lock = null;
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
-  const perRow = 3, margin = 8;
-  const slots = g.sentence.map((w, i) => i);
-  for (let i = slots.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
-  g.sentence.forEach((text, order) => {
-    const slot = slots[order];
+  const offered = [
+    ...item.answer.map((text, order) => ({ text, order, isDecoy:false })),
+    ...(item.decoys || []).map((text, i) => ({ text, order:item.answer.length+i, isDecoy:true })),
+  ];
+  const perRow = g.variant === 'B' ? (W < 520 ? 1 : 2) : perRowForWidth(), margin = 8;
+  g.perRow = perRow;
+  const slots = offered.map((w, i) => i);
+  const layoutRng = makeRng(AB_SEED ^ textSeed(item.id));
+  for (let i = slots.length - 1; i > 0; i--){ const j = Math.floor(layoutRng()*(i+1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
+  offered.forEach((piece, pieceIndex) => {
+    const { text, order, isDecoy } = piece;
+    const slot = slots[pieceIndex];
     const row = Math.floor(slot/perRow), col = slot%perRow;
-    const tw = ctx.measureText(text).width, bw = tw + 22, bh = 32;
     const laneW = (W - margin*2) / perRow;
-    const x = Math.max(margin, Math.min(W - margin - bw, margin + col*laneW + (laneW-bw)/2 + (Math.random()*20-10)));
-    const rows = Math.ceil(g.sentence.length/perRow);
-    const y = -(rows - row) * 52 - 20 + Math.random()*8;
+    const tw = ctx.measureText(text).width, bw = Math.min(laneW - 10, tw + 22), bh = 34;
+    const jitterX = layoutRng()*12-6;
+    const x = Math.max(margin, Math.min(W - margin - bw, margin + col*laneW + (laneW-bw)/2 + jitterX));
+    const rows = Math.ceil(offered.length/perRow), top = W < 520 ? 104 : 132;
+    const safeBottom = Math.max(top,(H-64)-wingHoldClearance()-bh-6);
+    const bottom = g.variant==='B' && W>=520 ? Math.max(top,Math.min(safeBottom,H-250)) : safeBottom;
+    const rowGap = rows > 1 ? Math.min(58,(bottom-top)/(rows-1)) : 0;
+    const y = top + row * rowGap;
     const hp = sigLen(text);   // unified: letters are HP in both input styles
     g.words.push({
       text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0,
       committed: 0, resolved: false, resolvedAt: 0, settled: false, pts: 0,
-      row, col,
+      row, col, slot, jitterX, holding: false, threatY: null, isDecoy, baseX:x,
+      phase:layoutRng()*Math.PI*2, firedAt:0,
     });
   });
-  tEv('sentence_start', { solved: g.solved, speed: roundTrace(g.speed),
+  tEv('sentence_start', { solved: g.solved, speed: roundTrace(g.speed), variant:g.variant,
+    item:item.id, source:item.source||null, ask:item.ask, lead:item.lead, tail:item.tail, answer_count:item.answer.length,
     words: g.words.map(w => [w.order, w.text, roundTrace(w.x), roundTrace(w.y),
-      roundTrace(w.w), roundTrace(w.h), w.maxhp]) });
+      roundTrace(w.w), roundTrace(w.h), w.maxhp, w.isDecoy ? 1 : 0]) });
   updateHud();
 }
 
+function updateReserveHud(){
+  const label = 'TEST ' + g.variant + ' · ' + (g.variant === 'A' ? 'VECTOR' : 'CORE') +
+    ' R' + Math.round(g.recoilBank || 0) + (g.variant === 'B' ? ' · SYNC ' + Math.round(g.sync || 0) : '');
+  if ($('h-variant').textContent !== label) $('h-variant').textContent = label;
+}
+
 function updateHud(){
+  updateReserveHud();
   $('h-score').textContent = g.score;
   $('h-combo').textContent = g.combo;
   $('h-weapon').textContent = WEAPONS[weaponLv()-1];
@@ -576,7 +835,11 @@ function updateHud(){
   $('h-shields').innerHTML = '🛡<b>' + g.shields + '</b>';
   $('h-lives').textContent = '▲'.repeat(Math.max(0, g.lives)) || '—';
   $('h-best').textContent = g.best;
-  $('built').textContent = '> ' + g.sentence.slice(0, g.idx).join(' ') + '   [' + g.idx + '/' + g.sentence.length + ']';
+  $('built').textContent = '> ' + replyText(g.idx, true) + '   [' + g.idx + '/' + g.sentence.length + ']';
+  if (g.item){
+    $('prompt').innerHTML = '<span class="speaker">A:</span> ' + esc(g.item.ask) + '<br>' +
+      '<span class="speaker">B:</span> <span class="reply">' + esc(replyText(g.idx, true)) + '</span>';
+  }
 }
 
 function banner(text, gold){
@@ -606,30 +869,193 @@ function popText(x, y, text, color){
   g.parts.push({ x, y, vx: 0, vy: -60, life: .8, t: 0, color, text });
 }
 
+function equivalentTarget(word){
+  if (!word || word.order === g.idx) return word;
+  const target = g.words.find(w => !w.resolved && w.order === g.idx);
+  if (!target || choiceIdentity(target.text) !== choiceIdentity(word.text)) return word;
+  const oldOrder = word.order;
+  word.order = target.order;
+  target.order = oldOrder;
+  const oldDecoy = word.isDecoy;
+  word.isDecoy = target.isDecoy;
+  target.isDecoy = oldDecoy;
+  tEv('equivalent_swap', { text:word.text, selected:oldOrder, target:g.idx });
+  return word;
+}
+
+function spawnEnemyShot(word, angry){
+  if (!word || word.resolved) return;
+  const x = wordVisualX(word) + word.w/2, y = wordVisualY(word) + word.h;
+  const aimX = Math.max(18, Math.min(W-18, g.ship.x + (Math.random()*70-35)));
+  const dx = aimX-x, dy = Math.max(80, H-34-y), d = Math.hypot(dx,dy) || 1;
+  const rules = variantRules(g.variant);
+  const speed = rules.enemySpeed + Math.min(rules.enemyGrowthCap,g.solved*rules.enemyGrowth) + (angry ? 55 : 0);
+  g.enemyShots.push({ x,y, vx:dx/d*speed, vy:dy/d*speed, r:angry?5:4, source:word.order });
+  tone(150, 105, .045, 'sawtooth', .025);
+}
+
+function clearEnemyShots(x, y, radius){
+  let cleared = 0;
+  g.enemyShots = g.enemyShots.filter(s => {
+    if (Math.hypot(s.x-x,s.y-y) > radius) return true;
+    cleared++;
+    spawnParts(s.x,s.y,3,'#d7ba7d',70);
+    return false;
+  });
+  if (cleared) tEv('bullet_clear', { cleared, radius, variant:g.variant });
+  return cleared;
+}
+
+function addPulse(x,y,maxR,color,life){
+  g.pulses.push({ x,y,r:4,maxR,life:life||.45,t:0,color });
+}
+
+function awardGraze(shot){
+  if (!g || g.variant!=='B' || shot.grazed) return;
+  shot.grazed=true;
+  const before=g.sync||0;
+  g.sync=Math.min(SYNC_MAX,before+GRAZE_GAIN);
+  g.grazes++;
+  spawnParts(shot.x,shot.y,5,'#5ee6df',65);
+  popText(g.ship.x,H-63,'GRAZE +'+(g.sync-before),'#5ee6df');
+  tone(760,1040,.045,'sine',.035);
+  tEv('graze',{ source:shot.source, before, after:g.sync, x:roundTrace(shot.x), y:roundTrace(shot.y), scene:traceScene() });
+  if(before<SYNC_MAX && g.sync===SYNC_MAX){ banner('SYNC READY — LAND A HIT',true); sfx.up(); }
+  updateReserveHud();
+}
+
+function applyPhysicalImpact(word,x,y,forced){
+  if (forced || g.variant!=='B') return { cleared:0, burst:false };
+  const rules=variantRules(g.variant);
+  const burst=!word.auto && (g.sync||0)>=SYNC_MAX;
+  const beforeSync=g.sync||0;
+  const radius=burst ? 9999 : rules.clearRadius+Math.min(70,g.combo*7);
+  const cleared=clearEnemyShots(x,y,radius);
+  addPulse(x,y,burst?230:Math.min(150,radius),'#5ee6df',burst?.62:.42);
+  if(burst){
+    const core=signalCore();
+    g.sync=0; g.coreBursts++; g.score+=250;
+    addPulse(core.x,core.y,Math.max(W,H)*.72,'#bdb8ff',.72);
+    spawnParts(core.x,core.y,18,'#bdb8ff',175);
+    banner('CORE BURST · +250',true); sfx.up(); buzz([24,28,55]);
+    tEv('core_burst',{ order:word.order, w:word.text, sync_before:beforeSync,
+      cleared, points:250, x:roundTrace(x), y:roundTrace(y) });
+    popText(x,y-10,'CORE BURST · PARRY '+cleared,'#bdb8ff');
+    checkExtraLife();
+    if(g.score>g.best){ g.best=g.score; localStorage.setItem('shooter2_best',g.best); }
+  } else {
+    tEv('impact_parry',{ order:word.order, w:word.text, cleared, radius, x:roundTrace(x), y:roundTrace(y) });
+    popText(x,y-8,cleared?'IMPACT PARRY '+cleared:'IMPACT','#5ee6df');
+  }
+  updateHud();
+  return { cleared, burst };
+}
+
+function takeShipHit(){
+  const now = performance.now();
+  if (!g || g.over || now < (g.hitInvulnUntil || 0)) return;
+  g.hitInvulnUntil = now + 950;
+  // Being clipped while dodging must not turn the player's next confirm into an
+  // accidental stocked auto-build. Keep the visible candidate focus through recoil.
+  g.perfect = false; g.combo = 0;
+  g.shotJamUntil = 0; g.missChain = 0;
+  const syncBefore=g.sync||0;
+  if(g.variant==='B') g.sync=Math.max(0,syncBefore-40);
+  const shielded = g.shields > 0;
+  if (shielded) g.shields--;
+  else g.lives--;
+  spawnParts(g.ship.x,H-34,18,'#d16969',190); shake(); buzz(shielded?55:110);
+  clearEnemyShots(g.ship.x,H-34,9999);
+  tEv('ship_hit', { shielded, shields:g.shields, lives:g.lives, variant:g.variant,
+    sync_before:syncBefore, sync_after:g.sync||0 });
+  if (g.lives <= 0){ gameOver(); return; }
+  recoilFormation(shielded ? 'shield_fire' : 'life_fire');
+  banner(shielded ? 'SHIELD PARRY' : 'SHIP HIT', shielded);
+  $('msg').innerHTML = shielded
+    ? '<span style="color:var(--gold)">🛡 hostile fire blocked</span>'
+    : '<span style="color:var(--danger)">✦ hit!</span> keep building — ' + g.lives + ' ships left';
+  updateHud();
+}
+
+function inputJammed(kind){
+  const left = Math.max(0,Math.ceil(((g && g.shotJamUntil) || 0)-performance.now()));
+  if (!left) return false;
+  tEv('input_jammed', { kind, remaining:left, scene:traceScene() });
+  $('msg').innerHTML = '<span style="color:var(--danger)">WEAPONS JAMMED</span> — dodge for ' + left + 'ms';
+  return true;
+}
+
+function applyWrongPenalty(chosen, detail){
+  const now = performance.now();
+  const rules = variantRules(g.variant);
+  g.missChain = now - (g.lastMissAt || 0) < 1200 ? Math.min(3,(g.missChain || 0)+1) : 1;
+  g.lastMissAt = now;
+  const chain = g.missChain;
+  const jam = rules.wrongJamBase + chain*rules.wrongJamChain;
+  g.shotJamUntil = now + jam;
+  g.missGraceUntil = now + MISS_BURST_MS;
+  g.typePrefix = ''; g.plinks++; g.combo = 0; g.perfect = false;
+  g.score = Math.max(0,g.score-50*chain);
+  if (chosen) chosen.err = .55;
+
+  const lunge = rules.wrongLungeBase + chain*rules.wrongLungeChain;
+  for (const word of g.words) word.y += lunge;
+  const target = g.words.find(word => !word.resolved && word.order === g.idx);
+  if (target && Number.isFinite(target.threatY)) target.threatY += lunge;
+  const timeLost = 0;
+  const bankLost = Math.min(g.recoilBank || 0,12*chain);
+  g.recoilBank = Math.max(0,(g.recoilBank || 0)-bankLost);
+
+  const shooters = g.words.filter(word => !word.resolved);
+  const source = chosen && !chosen.resolved ? chosen : shooters[Math.floor(Math.random()*shooters.length)];
+  const retaliation = source ? rules.retaliationBase + chain : 0;
+  for (let i=0;i<retaliation;i++) spawnEnemyShot(source,true);
+  tEv('miss', Object.assign({
+    order:chosen ? chosen.order : null, w:chosen ? chosen.text : '', chain, jam, retaliation,
+    lunge, time_lost:roundTrace(timeLost), bank_lost:roundTrace(bankLost), scene:traceScene(),
+  },detail || {}));
+  sfx.plink(); shake(); buzz(35);
+  $('msg').innerHTML = '<span style="color:var(--danger)">✗ WRONG — JAM ' + jam + 'ms</span>' +
+    (retaliation ? ' · retaliation ×' + retaliation : '') +
+    (timeLost ? ' · -' + timeLost.toFixed(1) + 's' : ' · siege advances') + ' · keep dodging';
+  updateHud();
+}
+
 // tap-to-lock, ZType style: the ship fires a stream of homing missiles at the locked word
 function tapAt(x, y){
   if (!g || g.over || g.viewportPaused) return;   // keyboard and pointer both live when play is visible
   // A resolved word remains visible for its impacts, but is no longer an input target.
   const now = performance.now();
-  const w = g.words.find(w => {
+  if (inputJammed('tap')) return;
+  const live = g.words.filter(w => !w.resolved);
+  let w = live.find(w => {
     const wx = wordVisualX(w, now), wy = wordVisualY(w, now);
-    return !w.resolved && x >= wx - 8 && x <= wx + w.w + 8 && y >= wy - 8 && y <= wy + w.h + 8;
+    return x >= wx && x <= wx + w.w && y >= wy && y <= wy + w.h;
   });
+  // Padding makes narrow/mobile blocks easier to hit, but adjacent padded boxes can overlap.
+  // In that fringe choose the visually nearest block instead of array order (which leaks answer order).
+  if (!w){
+    w = live.filter(word => {
+      const wx = wordVisualX(word, now), wy = wordVisualY(word, now);
+      return x >= wx - 8 && x <= wx + word.w + 8 && y >= wy - 8 && y <= wy + word.h + 8;
+    }).sort((a,b) => {
+      const ax=wordVisualX(a,now)+a.w/2, ay=wordVisualY(a,now)+a.h/2;
+      const bx=wordVisualX(b,now)+b.w/2, by=wordVisualY(b,now)+b.h/2;
+      return Math.hypot(x-ax,y-ay)-Math.hypot(x-bx,y-by);
+    })[0];
+  }
   if (!w) return;
+  w = equivalentTarget(w);
   tEv('tap_input', { x: roundTrace(x), y: roundTrace(y), order: w.order, w: w.text,
     correct: w.order === g.idx, scene: traceScene() });
+  g.typePrefix = ''; g.lock = null;
   if (w.order === g.idx){
+    g.missChain = 0;
     g.lock = w;
     queueDamageVolley(w, w.maxhp - w.committed);   // one tap commits a full kill; visuals follow independently
     tone(600, 900, .06, 'square', .05);            // lock blip
   } else {
-    g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
-    w.err = 0.35;
-    for (const ww of g.words) ww.y += (g.solved < 3 ? 12 : 26);   // gentler lunge while warming up
-    tEv('miss', { order:w.order, w: w.text, want: (g.words.find(x=>x.order===g.idx)||{}).text, scene: traceScene() });
-    sfx.plink(); shake();
-    $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> not "' + esc(w.text) + '" — combo reset';
-    updateHud();
+    applyWrongPenalty(w,{ want:(g.words.find(word=>word.order===g.idx)||{}).text });
   }
 }
 
@@ -674,74 +1100,125 @@ function spawnMissiles(dt){
   g.fireQueues = g.fireQueues.filter(q => q.remaining > 0);
 }
 
-// TYPE MODE: every correct keystroke is a missile; escorts join at higher marks
-function handleKey(key){
-  if (!g || g.over || g.viewportPaused || key.length !== 1) return;
-  const t = g.words.find(w => w.order === g.idx);
-  if (!t || t.consumed >= t.text.length) return;
+function advanceTypedKey(t, key){
+  if (!t || t.resolved || t.consumed >= t.text.length) return false;
   const expected = t.text[t.consumed];
-  if (expected.toLowerCase() === key.toLowerCase()){
-    tEv('key_input', { order:t.order, k: key, w: t.text, at: t.consumed, scene: traceScene() });
-    g.missGraceUntil = 0;                    // real progress starts a fresh mistake boundary
-    g.lock = t;
-    const letter = expected;
-    t.consumed++;
-    sfx.pew();
-    commitMissile(t, letter);
-    while (t.consumed < t.text.length && !SIG.test(t.text[t.consumed])){
-      t.consumed++;                          // punctuation rides along as a free missile
-      launchMissile(t, 0);
-    }
-    for (let i = 1; i < weaponLv(); i++) launchMissile(t, 0);   // escort missiles: pure spectacle
-  } else if (SIG.test(key)){
-    const now = performance.now();
-    if (now < g.missGraceUntil){
-      g.missGraceUntil = now + MISS_BURST_MS;       // keep one continuous wrong word in one burst
-      tEv('miss_suppressed', { order:t.order, k: key, want: expected, w: t.text,
-        remaining: Math.ceil(g.missGraceUntil - now), scene: traceScene() });
-      return;
-    }
-    g.missGraceUntil = now + MISS_BURST_MS;
-    g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
-    t.err = 0.35;
-    for (const w of g.words) w.y += (g.solved < 3 ? 12 : 26);   // gentler lunge while warming up
-    tEv('miss', { order:t.order, k: key, want: expected, w: t.text, scene: traceScene() });
-    sfx.plink(); shake();
-    $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> wrong key — combo reset';
-    updateHud();
+  if (expected.toLowerCase() !== key.toLowerCase()) return false;
+  tEv('key_input', { order:t.order, k:key, w:t.text, at:t.consumed, scene:traceScene() });
+  g.missGraceUntil = 0;
+  g.lock = t;
+  t.consumed++;
+  sfx.pew();
+  commitMissile(t, expected);
+  while (t.consumed < t.text.length && !SIG.test(t.text[t.consumed])){
+    t.consumed++;                            // commas and periods ride along as free missiles
+    launchMissile(t, 0);
+  }
+  for (let i = 1; i < weaponLv(); i++) launchMissile(t, 0);
+  return true;
+}
+
+function suppressTypedMiss(chosen, key, guess, expected){
+  const now = performance.now();
+  tEv('miss_suppressed', {
+    order: chosen ? chosen.order : null, k:key, want:expected || undefined,
+    w:chosen ? chosen.text : '', guess:guess || '',
+    remaining:Math.max(0,Math.round(g.missGraceUntil-now)), scene:traceScene(),
+  });
+}
+
+function penalizeTypedGuess(chosen, key, guess, expected){
+  applyWrongPenalty(chosen,{ k:key, want:expected || undefined, guess:guess || '' });
+}
+
+function focusCandidates(prefix){
+  if (!g || !prefix) return [];
+  const normalized=String(prefix).toLowerCase();
+  return g.words.filter(w=>!w.resolved && typingForm(w.text).startsWith(normalized));
+}
+function focusSelection(prefix){
+  const candidates=focusCandidates(prefix);
+  const forms=[...new Set(candidates.map(w=>choiceIdentity(w.text)))];
+  if (forms.length!==1) return { candidates, forms, chosen:null };
+  const target=g.words.find(w=>!w.resolved&&w.order===g.idx);
+  const chosen=target && forms[0]===choiceIdentity(target.text) ? target : candidates[0];
+  return { candidates, forms, chosen };
+}
+function describeFocus(){
+  if (!g.typePrefix){ $('msg').textContent='# focus cleared — type to light matching chunks'; return; }
+  const state=focusSelection(g.typePrefix);
+  if (state.forms.length===1){
+    $('msg').innerHTML='<span style="color:var(--bright)">FOCUS '+esc(g.typePrefix.toUpperCase())+'</span> · '+
+      state.candidates.length+' target'+(state.candidates.length===1?'':'s')+' · <span style="color:var(--gold)">TAB TO CONFIRM</span>';
+  } else {
+    $('msg').innerHTML='<span style="color:var(--bright)">FOCUS '+esc(g.typePrefix.toUpperCase())+'</span> · '+
+      state.candidates.length+' candidates · keep typing to narrow';
   }
 }
 
-// TAB = shell-style completion: finishes the word you already started (never a bomb)
+// Typing only builds a visible candidate focus. It never judges grammar by itself.
+function handleKey(key){
+  if (!g || g.over || g.viewportPaused) return;
+  if (key==='Backspace'){
+    if (!g.typePrefix) return;
+    g.typePrefix=g.typePrefix.slice(0,-1); g.lock=null;
+    const state=focusSelection(g.typePrefix);
+    if (state.chosen) g.lock=state.chosen;
+    tEv('focus_change',{ prefix:g.typePrefix, candidates:state.candidates.map(w=>w.order),
+      reason:'backspace', scene:traceScene() });
+    describeFocus(); return;
+  }
+  if (key.length!==1 || !SIG.test(key)) return;
+  if (inputJammed('type')) return;
+  const attempted=(g.typePrefix+key).toLowerCase();
+  const candidates=focusCandidates(attempted);
+  tEv('key_input',{ order:null, k:key, prefix:g.typePrefix, attempted, scene:traceScene() });
+  if (!candidates.length){
+    const rejected=attempted; g.typePrefix=''; g.lock=null;
+    tEv('focus_clear',{ rejected, reason:'no_match', scene:traceScene() });
+    tone(180,120,.05,'square',.025);
+    $('msg').innerHTML='<span style="color:var(--dim)">NO MATCH '+esc(rejected.toUpperCase())+'</span> — focus cleared, no penalty';
+    return;
+  }
+  g.typePrefix=attempted; g.missGraceUntil=0;
+  const state=focusSelection(g.typePrefix);
+  g.lock=state.chosen;
+  tEv('type_prefix',{ prefix:g.typePrefix, candidates:candidates.map(w=>w.order),
+    unique:state.chosen ? state.chosen.order : null, scene:traceScene() });
+  tone(state.chosen?520:340,state.chosen?760:430,.045,'square',.025);
+  describeFocus();
+}
+
+// With a focus, Tab confirms for free and only then judges. With no focus, Tab spends ⚡ to auto-build.
 function handleTab(){
   if (!g || g.over || g.viewportPaused) return;
-  const t = g.words.find(w => w.order === g.idx);
-  if (!t) return;
-  const started = t.consumed > 0 || t.committed > 0 || t.hp < t.maxhp;
-  if (!started){
-    sfx.plink();
-    $('msg').textContent = '# tab completes what you started — type or hit at least once first';
-    return;
-  }
-  if (g.tabs <= 0){
-    sfx.plink();
-    $('msg').textContent = '# no ⚡ left — PERFECT sentences or a fresh 12-combo refill it';
-    return;
-  }
-  g.tabs--; g.perfect = false; t.auto = true; g.lock = t;
-  tEv('tab', { order:t.order, w: t.text, at: t.consumed || (t.maxhp - t.hp), left: g.tabs,
-    d: Math.round((H - 64) - (t.y + t.h)), scene: traceScene() });
-  tone(300, 900, .12, 'square', .06);
-  if (t.consumed > 0){
-    while (t.consumed < t.text.length){
-      const ch = t.text[t.consumed]; t.consumed++;
-      if (SIG.test(ch)) commitMissile(t, ch);
-      else launchMissile(t, 0);
+  if (inputJammed('tab')) return;
+  if (g.typePrefix){
+    const prefix=g.typePrefix, state=focusSelection(prefix);
+    if (!state.chosen){
+      tEv('focus_confirm_blocked',{ prefix, candidates:state.candidates.map(w=>w.order), scene:traceScene() });
+      sfx.plink(); describeFocus(); return;
     }
-  } else {
-    const left = t.maxhp - t.committed;
-    for (let i = 0; i < left; i++) commitMissile(t);
+    const chosen=equivalentTarget(state.chosen), correct=chosen.order===g.idx;
+    tEv('focus_confirm',{ prefix, order:chosen.order, w:chosen.text, correct, scene:traceScene() });
+    g.typePrefix=''; g.lock=null;
+    if (correct){
+      g.missChain=0; g.lock=chosen;
+      queueDamageVolley(chosen,chosen.maxhp-chosen.committed);
+      tone(600,900,.06,'square',.05);
+    } else applyWrongPenalty(chosen,{ guess:prefix, confirm:'tab' });
+    updateHud(); return;
   }
+  const t=g.words.find(w=>w.order===g.idx);
+  if (!t) return;
+  if (g.tabs<=0){
+    sfx.plink(); $('msg').textContent='# no ⚡ left — every 4 manual kills or a PERFECT refill it'; return;
+  }
+  g.tabs--; g.perfect=false; g.missChain=0; t.auto=true; g.lock=t;
+  tEv('tab',{ order:t.order, w:t.text, at:t.consumed||(t.maxhp-t.hp), left:g.tabs,
+    d:Math.round((H-64)-((Number.isFinite(t.threatY)?t.threatY:t.y)+t.h)), scene:traceScene() });
+  tone(300,900,.12,'square',.06);
+  queueDamageVolley(t,t.maxhp-t.committed);
   updateHud();
 }
 
@@ -755,25 +1232,70 @@ function checkExtraLife(){
   }
 }
 
+function awardTabs(count, reason, overflowPoints){
+  const room = Math.max(0, TAB_CAP - g.tabs);
+  const gained = Math.min(count, room), overflow = count - gained;
+  if (gained > 0){
+    g.tabs += gained;
+    tEv('item_gain', { item:'tab', reason, amount:gained, left:g.tabs });
+  }
+  if (overflow > 0){
+    const points = overflow * overflowPoints;
+    g.score += points;
+    tEv('item_overflow', { item:'tab', reason, amount:overflow, left:g.tabs, points });
+  }
+  return { gained, overflow, points:overflow * overflowPoints };
+}
+
+function applyCorrectDefense(word,nextTarget){
+  const rules = variantRules(g.variant);
+  // VECTOR keeps its legacy instant parry. The selected CORE game waits for the
+  // reserved missiles to physically kill the word before releasing its parry.
+  const cleared = g.variant==='A' && rules.clearRadius
+    ? clearEnemyShots(wordVisualX(word)+word.w/2,wordVisualY(word)+word.h/2,
+      rules.clearRadius+Math.min(70,g.combo*7))
+    : 0;
+  const requestedKick = rules.kickBase + Math.min(rules.kickCap,g.combo*rules.kickCombo);
+  const recoilAt = performance.now(), movement = [];
+  const liveWords = g.words.filter(live => !live.resolved);
+  const available = liveWords.length ? Math.max(0,Math.min(...liveWords.map(live=>live.y-104))) : 0;
+  const kick = Math.min(requestedKick,available);
+  g.recoilBank += requestedKick-kick;
+  for (const live of liveWords)
+    movement.push(beginWordRecoil(live,live.y-kick,recoilAt,null,false));
+  if (nextTarget) nextTarget.threatY = nextTarget.y;
+  tEv('earned_recoil', { variant:g.variant, requested:requestedKick, kick,
+    bank:roundTrace(g.recoilBank), cleared, combo:g.combo, remaining:liveWords.length, movement });
+  const effect = cleared ? 'PARRY '+cleared+' · ' : '';
+  const pushText = kick >= 1 ? 'PUSH -'+Math.round(kick) : 'PRESSURE BANKED';
+  popText(W/2,Math.max(104,wordVisualY(word)),effect+pushText+
+    (g.recoilBank >= 1 ? '  R'+Math.round(g.recoilBank) : ''),'#aef0ae');
+}
+
 function resolveWord(word){
   if (!word || word.resolved || word.order !== g.idx) return;
   word.resolved = true;
   word.resolvedAt = performance.now();
   g.missGraceUntil = 0;
+  g.lastMissAt = 0; g.missChain = 0;
+  g.typePrefix = '';
   if (g.lock === word) g.lock = null;
   g.kills++; g.idx++; g.wordT = 0;
+  const nextTarget = g.words.find(w => !w.resolved && w.order === g.idx);
+  if (nextTarget) nextTarget.threatY = nextTarget.y;
   if (!word.auto){
     g.combo++;
-    if (g.combo === 12){        // streak mastery feeds the tab stock (his intuition, adopted)
-      if (g.tabs < 4){
-        g.tabs++; tEv('item_gain', { item: 'tab', reason: 'combo12', left: g.tabs });
-        banner('+1 ⚡ — COMBO 12', true); sfx.up();
-      } else {
-        g.score += 300;
-        tEv('item_overflow', { item: 'tab', reason: 'combo12', left: g.tabs, points: 300 });
-      }
+    if (g.combo % TAB_COMBO_STEP === 0){
+      const reward = awardTabs(1, 'combo' + g.combo, 300);
+      if (reward.gained){ banner('+1 ⚡ — COMBO ' + g.combo, true); sfx.up(); }
+      else banner('⚡ FULL +' + reward.points, true);
     }
   }
+  applyCorrectDefense(word,nextTarget);
+  const finalChunk=g.idx===g.sentence.length;
+  $('msg').innerHTML = finalChunk
+    ? '<span style="color:var(--bright)">✓ ANSWER LOCKED</span> — final impact inbound'
+    : '<span style="color:var(--bright)">✓ CORRECT</span> — breach pushed back; choose the next chunk';
   const lvBefore = WEAPONS[weaponLv()-1];
   // long words are the fun AND the danger (trace-verified: all deaths were long words) — pay accordingly
   const base = 60 + 9 * word.maxhp;
@@ -785,7 +1307,7 @@ function resolveWord(word){
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
   const lvAfter = WEAPONS[weaponLv()-1];
   if (lvAfter !== lvBefore){ banner('WEAPON UP — ' + lvAfter, true); sfx.up(); buzz([20,40,20]); }
-  if (g.idx === g.sentence.length) sentenceClear();
+  if (finalChunk) g.pendingSentenceClear=true;
   updateHud();
 }
 
@@ -796,33 +1318,49 @@ function settleWord(word, forced){
   g.words = g.words.filter(w => w !== word);
   if (g.lock === word) g.lock = null;
   const lag = Math.max(0, Math.round(performance.now() - word.resolvedAt));
-  tEv('settle', { order:word.order, w: word.text, lag, forced: !!forced });
+  const impact=applyPhysicalImpact(word,visualX+word.w/2,visualY+word.h/2,forced);
+  tEv('settle', { order:word.order, w: word.text, lag, forced: !!forced,
+    impact_cleared:impact.cleared, core_burst:impact.burst });
   sfx.boom(); buzz(25); shake();
   spawnParts(visualX + word.w/2, visualY + word.h/2, 14, '#d7ba7d', 160);
   spawnParts(visualX + word.w/2, visualY + word.h/2, 8, '#aef0ae', 90);
   popText(visualX + word.w/2, visualY, '+' + word.pts, '#d7ba7d');
+  if(!forced && word.order===g.sentence.length-1 && g.pendingSentenceClear && g.idx===g.sentence.length){
+    g.pendingSentenceClear=false;
+    sentenceClear();
+  }
 }
 
 function sentenceClear(){
+  for (const decoy of g.words.slice()){
+    if (!decoy.resolved && decoy.isDecoy){
+      decoy.resolved = true; decoy.resolvedAt = performance.now(); decoy.pts = 0;
+      settleWord(decoy, true);
+    }
+  }
+  clearEnemyShots(W/2,H/2,9999);
   g.solved++;
   const secs = Math.round((performance.now() - g.t0)/1000);
   const bonus = Math.max(0, 150 - secs*4);
-  g.score += bonus;
+  const reserveBonus = Math.round((g.recoilBank||0)*4);
+  if (reserveBonus) tEv('reserve_bonus',{ bank:roundTrace(g.recoilBank), points:reserveBonus });
+  g.recoilBank = 0;
+  g.score += bonus + reserveBonus;
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
   sfx.clear();
   let earned = '';
   if (g.perfect){
-    banner('PERFECT +1⚡', true);
-    if (g.tabs < 4){
-      g.tabs++; tEv('item_gain', { item: 'tab', reason: 'perfect', left: g.tabs });
-      earned = '  <span style="color:var(--gold)">+1 ⚡ (perfect)</span>'; sfx.up();
-    } else {
-      g.score += 500;
-      tEv('item_overflow', { item: 'tab', reason: 'perfect', left: g.tabs, points: 500 });
-      earned = '  <span style="color:var(--gold)">⚡ FULL +500</span>';
+    const reward = awardTabs(2, 'perfect', 500);
+    const rewardText = reward.gained ? '+' + reward.gained + '⚡' : '⚡ FULL';
+    banner('PERFECT ' + rewardText + (reward.points ? ' +' + reward.points : ''), true);
+    if (reward.gained){
+      earned = '  <span style="color:var(--gold)">+' + reward.gained + ' ⚡ (perfect)</span>'; sfx.up();
+    }
+    if (reward.points){
+      earned += '  <span style="color:var(--gold)">⚡ FULL +' + reward.points + '</span>';
     }  // OpenTyrian consolation-prize rule
   } else banner('CLEAR');
-  if (secs <= Math.ceil(g.sentence.length * 1.5)){   // speed mastery pays out in shields
+  if (secs <= Math.ceil(g.sentence.length * 2.8)){   // speed mastery pays out in shields
     if (g.shields < 2){
       g.shields++; tEv('item_gain', { item: 'shield', reason: 'fast_clear', left: g.shields });
       earned += '  <span style="color:var(--gold)">+1 🛡 (fast clear)</span>';
@@ -833,33 +1371,36 @@ function sentenceClear(){
   }
   checkExtraLife();
   tEv('clear', { len: g.sentence.length, secs, perfect: g.perfect });
-  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(g.sentence.join(' ')) + '</span> +' + bonus + earned;
-  setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 1000);
+  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(fullReply()) + '</span> +' + bonus +
+    (reserveBonus ? ' <span style="color:var(--gold)">+R' + reserveBonus + '</span>' : '') + earned;
+  setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 700);
 }
 
 function loseLife(word){
-  g.perfect = false; g.lock = null; g.wordT = 0;
+  // Preserve an in-progress focus through a formation breach so the next Tab
+  // remains a confirmation instead of consuming a stocked assist.
+  g.perfect = false; g.wordT = 0;
   if (g.shields > 0){   // shield repels the breakthrough: ship, gun and combo survive
-    const before = traceScene();
+    const transitionAt=performance.now(), before = traceScene(transitionAt);
     g.shields--;
-    recoilFormation('shield');
+    recoilFormation('shield',false,transitionAt);
     banner('SHIELD', true); tone(220, 660, .18, 'square', .09); buzz(60);
-    const after = traceScene();
+    const after = traceScene(transitionAt);
     tEv('shield_absorb', { order:word.order, w: word.text, effect: 'recoil', left: g.shields, before, after });
-    $('msg').innerHTML = '<span style="color:var(--gold)">🛡 shield repelled "' + esc(word.text) + '"</span>';
+    $('msg').innerHTML = '<span style="color:var(--gold)">🛡 shield absorbed the breach</span>';
     updateHud(); return;
   }
-  const before = traceScene();
+  const transitionAt=performance.now(), before = traceScene(transitionAt);
   sfx.hit(); buzz(120); shake();
   g.lives--; g.combo = 0;
   spawnParts(g.ship.x, H - 40, 20, '#d16969', 200);
   if (g.lives <= 0){
-    tEv('life_lost', { order:word.order, w: word.text, left: g.lives, before, after: traceScene() });
+    tEv('life_lost', { order:word.order, w: word.text, left: g.lives, before, after: traceScene(transitionAt) });
     gameOver(); return;
   }
-  $('msg').innerHTML = '<span style="color:var(--danger)">✦ "' + esc(word.text) + '" got through!</span> gun reset — ' + g.lives + ' ships left';
-  recoilFormation('life');
-  tEv('life_lost', { order:word.order, w: word.text, left: g.lives, before, after: traceScene() });
+  $('msg').innerHTML = '<span style="color:var(--danger)">✦ breach!</span> gun reset — ' + g.lives + ' ships left';
+  recoilFormation('life',false,transitionAt);
+  tEv('life_lost', { order:word.order, w: word.text, left: g.lives, before, after: traceScene(transitionAt) });
   updateHud();
 }
 
@@ -899,31 +1440,66 @@ function update(dt){
   if (g.freeze > 0){ g.freeze -= dt; return; }   // hit-stop
   for (const s of g.stars){ s.y += s.v*dt; if (s.y > H){ s.y = -2; s.x = Math.random()*W; } }
   g.wordT += dt;
-  const eff = g.speed + Math.min(44, g.wordT * 5);   // hesitation makes the formation hungrier
+  const siege = true, rules = variantRules(g.variant);
+  const eff = g.speed + Math.min(rules.hesitationCap,g.wordT*rules.hesitationAccel);
   g.eff = eff;
-  const deadline = H - 64;
+  const now = performance.now(), active = now >= (g.waveGraceUntil || 0);
+  const moveDir = (moveInput.right?1:0)-(moveInput.left?1:0);
+  if (moveDir){
+    g.ship.x = Math.max(16,Math.min(W-16,g.ship.x+moveDir*330*dt));
+    g.ship.manualUntil = now+180;
+  }
+  if (g.variant === 'B') g.visualPhase += dt*.9;
+  const deadline = H - 64, rawStep = active && siege ? eff * dt : 0;
+  const bankSpend = siege ? Math.min(rawStep,g.recoilBank || 0) : 0;
+  if (bankSpend){ g.recoilBank -= bankSpend; updateReserveHud(); }
+  const fullStep = rawStep-bankSpend;
+  const target = g.words.find(w => !w.resolved && w.order === g.idx);
+  if (target && siege){
+    if (!Number.isFinite(target.threatY)) target.threatY = target.y;
+    target.threatY += fullStep;
+  }
+  const future = g.words.filter(w => !w.resolved && w.order !== g.idx);
+  const clearance = wingHoldClearance();
+  const holdBottom = deadline - clearance;
+  const futureRoom = future.length
+    ? Math.min(...future.map(w => holdBottom - (w.y + w.h)))
+    : fullStep;
+  // Every live word shares one visible formation step, so stopping cannot identify the answer
+  // or let the target cross another block. The target's threat clock keeps descending invisibly.
+  const formationStep = siege ? Math.max(0, Math.min(fullStep, futureRoom)) : 0;
   for (const w of g.words){
-    w.y += eff * dt;
+    if (w.resolved) w.y += fullStep;
+    else if (siege){ w.y += formationStep; if (w.order === g.idx) w.holding = false; }
+    else w.holding = false;
     if (w.flash > 0) w.flash -= dt;
     if (w.err > 0) w.err -= dt;
     if (w.resolved) continue;                    // fatal damage is committed; this shell can no longer hurt the player
-    if (w.y + w.h >= deadline){
-      if (w.order === g.idx){ loseLife(w); return; }
-      // ZType lesson: every ship on screen must have teeth. an armored word
-      // slipping past permanently angers the whole formation.
-      const now=performance.now(), startAt=Math.max(now,g.nextWingRecoilAt||now);
-      g.nextWingRecoilAt=startAt+RECOIL_MS+40;
-      const rail=recoilRailX(w,now,startAt), safeY=safeWingY(w,now);
-      const recycled = beginWordRecoil(w, safeY, now, rail, false, startAt);
-      tEv('wing_recycle', { order: w.order, w: w.text, from_y: recycled[1], to_y: recycled[2],
-        from_x:recycled[5], to_x:recycled[6], rail_x:recycled[7], path:'side_up_return',
-        visual_delay:Math.round(startAt-now), target: g.idx, effect: 'visible_recoil', duration: RECOIL_MS });
-      g.speed = Math.min(120, g.speed * 1.1);
-      tone(70, 45, .2, 'sine', .12);
+    if (!siege){ w.holding = false; continue; }
+    if (w.order !== g.idx){
+      const holding = w.y + w.h >= holdBottom - 0.01;
+      if (holding && !w.holding){
+        tEv('wing_hold', { order:w.order, w:w.text, y:roundTrace(w.y),
+          clearance:roundTrace(clearance), target:g.idx, effect:'hold_position' });
+        tone(90, 70, .08, 'sine', .04);
+      }
+      w.holding = holding;
+      continue;
+    }
+    if ((Number.isFinite(w.threatY) ? w.threatY : w.y) + w.h >= deadline){
+      loseLife(w); return;
     }
   }
-  // the ship slides under its locked target on its own — you aim by choosing, not steering
-  if (g.lock) g.ship.x += ((wordVisualX(g.lock) + g.lock.w/2) - g.ship.x) * Math.min(1, 8*dt);
+  if (active && g.words.some(w=>!w.resolved)){
+    g.enemyFireT -= dt;
+    if (g.enemyFireT <= 0){
+      const shooters = g.words.filter(w=>!w.resolved);
+      const volleys = g.solved >= 3 ? 2 : 1;
+      for (let i=0;i<volleys;i++) spawnEnemyShot(shooters[Math.floor(Math.random()*shooters.length)]);
+      g.enemyFireT = Math.max(rules.fireMin,rules.fireStart-g.solved*.025);
+    }
+  }
+  // Aiming never steers on desktop; arrow/touch movement remains independent of the lock.
   spawnMissiles(dt);
   for (const m of g.missiles){
     const t = m.target;
@@ -938,7 +1514,9 @@ function update(dt){
     if (m.x >= renderX && m.x <= renderX+t.w && m.y >= renderY && m.y <= renderY+t.h){
       m.dead = true;
       t.flash = .12;
-      spawnParts(m.x, m.y, 4, '#aef0ae', 90);
+      t.hitAt=performance.now(); t.hitDir=m.vx>=0?1:-1;
+      spawnParts(m.x, m.y, 7, '#aef0ae', 105);
+      addPulse(m.x,m.y,20,'#aef0ae',.16);
       if (m.letter){    // the struck letter breaks off and tumbles away
         g.parts.push({ x: m.x, y: renderY, vx: (Math.random()*2-1)*120, vy: -140, life: .7, t: 0, color: '#d7ba7d', text: m.letter });
       }
@@ -950,36 +1528,132 @@ function update(dt){
     }
   }
   g.missiles = g.missiles.filter(m => !m.dead && m.y > -40 && m.x > -40 && m.x < W+40);
-  // heartbeat when the needed word crosses into the danger zone
-  g.danger = g.words.some(w => w.order === g.idx && w.y > H - 200);
+  for (const shot of g.enemyShots){
+    shot.x += shot.vx*dt; shot.y += shot.vy*dt;
+    const shipY=H-34, hitRadius=12+shot.r;
+    const shipDistance=Math.hypot(shot.x-g.ship.x,shot.y-shipY);
+    if (shipDistance < hitRadius){
+      shot.dead = true; takeShipHit();
+    } else if(g.variant==='B' && !shot.grazed && shot.vy>0){
+      const wasArmed=!!shot.grazeArmed;
+      if(shipDistance<GRAZE_RADIUS+shot.r) shot.grazeArmed=true;
+      // Charge only after the armed bullet has safely crossed the ship's hit band.
+      // Entering the ring and then getting hit is not a successful graze.
+      if(wasArmed && shot.y>shipY+hitRadius) awardGraze(shot);
+    }
+  }
+  g.enemyShots = g.enemyShots.filter(s => !s.dead && s.y < H+20 && s.x > -30 && s.x < W+30);
+  // Heartbeat follows concrete incoming fire; siege also retains its shared formation deadline.
+  g.danger = g.enemyShots.some(s => s.y > H-190) || (g.words.some(w => w.order === g.idx &&
+    (Number.isFinite(w.threatY) ? w.threatY : w.y) > H - 200));
   if (g.danger){
     g.beatT -= dt;
     if (g.beatT <= 0){ g.beatT = 0.7; tone(85, 55, .14, 'sine', .16); }
   } else g.beatT = 0;
   for (const p of g.parts){ p.t += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += (p.text ? 0 : 140)*dt; }
   g.parts = g.parts.filter(p => p.t < p.life);
+  for(const pulse of g.pulses){
+    pulse.t+=dt;
+    const q=Math.max(0,Math.min(1,pulse.t/pulse.life));
+    pulse.r=4+(pulse.maxR-4)*(1-Math.pow(1-q,3));
+  }
+  g.pulses=g.pulses.filter(p=>p.t<p.life);
+}
+
+function threatLineY(){
+  const deadline = H - 64;
+  if (!g || !g.words) return deadline;
+  const target = g.words.find(w => !w.resolved && w.order === g.idx);
+  if (!target || !Number.isFinite(target.threatY)) return deadline;
+  return Math.max(34, deadline - Math.max(0, target.threatY - target.y));
+}
+
+function signalCore(){
+  if (W < 520){
+    const core={ x:W/2, y:H-94, r:26, hidden:false };
+    const live=g && g.words ? g.words.filter(w=>!w.settled) : [];
+    const maxBottom=live.length ? Math.max(...live.map(w=>wordVisualY(w)+w.h)) : -Infinity;
+    // Repeated wrong-answer lunges can consume the mobile gap. The core yields
+    // before it can cover a choice; spokes and the SIGNAL label remain visible.
+    core.hidden=maxBottom+8>core.y-core.r-5;
+    return core;
+  }
+  return { x:W/2, y:Math.min(H-125,Math.max(335,H*.64)), r:48 };
 }
 
 function draw(){
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#182818';
+  ctx.fillStyle = g.variant === 'B' ? '#171735' : '#102b38';
   for (const s of g.stars) ctx.fillRect(s.x, s.y, 2, 2);
   // the sentence you are building lives INSIDE the sky — no looking away from the fight
   {
-    let lineTxt = '> ' + g.sentence.slice(0, g.idx).join(' ') + ' ▁';
+    let lineTxt = '> ' + replyText(g.idx, true);
     const tag = '  [' + g.idx + '/' + g.sentence.length + ']';
     ctx.font = '14px "Cascadia Mono", Consolas, monospace';
     let clipped = false;
     while (lineTxt.length > 4 && ctx.measureText(lineTxt + tag).width > W - 24){ lineTxt = lineTxt.slice(2); clipped = true; }
     ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(174,240,174,.9)';
+    ctx.fillStyle = g.variant === 'B' ? 'rgba(189,184,255,.94)' : 'rgba(159,233,251,.92)';
     g.builtDrawn = (clipped ? '…' : '') + lineTxt + tag;
-    ctx.fillText(g.builtDrawn, 10, 8);
+    ctx.fillText(g.builtDrawn, 10, 82);
     ctx.textBaseline = 'middle';
     ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   }
-  ctx.strokeStyle = 'rgba(209,105,105,.25)'; ctx.setLineDash([6,6]);
-  ctx.beginPath(); ctx.moveTo(0, H-64); ctx.lineTo(W, H-64); ctx.stroke(); ctx.setLineDash([]);
+  const deadlineY = H - 64, pressureY = threatLineY();
+  if (g.variant === 'A'){
+    const laneXs=[.25,.5,.75].map(r=>W*r);
+    ctx.strokeStyle='rgba(115,213,238,.1)'; ctx.setLineDash([3,9]);
+    for(const x of laneXs){ ctx.beginPath(); ctx.moveTo(x,126); ctx.lineTo(x,deadlineY); ctx.stroke(); }
+    for(let y=150;y<deadlineY;y+=58){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(73,121,138,.35)';
+    ctx.beginPath(); ctx.moveTo(0, deadlineY); ctx.lineTo(W, deadlineY); ctx.stroke();
+    ctx.strokeStyle = 'rgba(209,105,105,.48)'; ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(0, pressureY); ctx.lineTo(W, pressureY); ctx.stroke(); ctx.setLineDash([]);
+    if (pressureY < deadlineY - 1){
+      ctx.fillStyle = 'rgba(209,105,105,.72)'; ctx.font = '11px "Cascadia Mono", Consolas, monospace';
+      ctx.fillText('VECTOR PRESSURE', Math.max(8, W - 128), Math.max(14, pressureY - 9));
+    }
+  } else {
+    const core=signalCore(), coreX=core.x, coreY=core.y;
+    const focusState=focusSelection(g.typePrefix), focusSet=new Set(focusState.candidates);
+    for(const w of g.words){
+      const wx=wordVisualX(w)+w.w/2, wy=wordVisualY(w)+w.h/2, focused=focusSet.has(w), incoming=w.resolved;
+      ctx.strokeStyle=incoming?'rgba(94,230,223,.62)':focused ? (focusState.chosen?'rgba(94,230,223,.85)':'rgba(189,184,255,.75)') : 'rgba(104,100,170,.16)';
+      ctx.lineWidth=focused||incoming?2:1; ctx.setLineDash(focused||incoming?[]:[4,8]);
+      ctx.beginPath(); ctx.moveTo(coreX,coreY); ctx.lineTo(wx,wy); ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.lineWidth=1;
+    if(!core.hidden){
+      const ratio=Math.max(0,Math.min(1,(deadlineY-pressureY)/Math.max(1,H-130)));
+      ctx.strokeStyle='rgba(104,100,170,.35)'; ctx.lineWidth=9;
+      ctx.beginPath(); ctx.arc(coreX,coreY,core.r,-Math.PI*.75,Math.PI*.75); ctx.stroke();
+      ctx.strokeStyle=ratio>.7?'#d16969':'#5ee6df';
+      ctx.beginPath(); ctx.arc(coreX,coreY,core.r,-Math.PI*.75,-Math.PI*.75+Math.PI*1.5*ratio); ctx.stroke();
+      ctx.lineWidth=1; ctx.fillStyle='rgba(12,12,31,.92)';
+      ctx.beginPath(); ctx.arc(coreX,coreY,core.r-10,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(189,184,255,.75)'; ctx.stroke();
+      ctx.fillStyle=g.typePrefix?'#5ee6df':'#9f9af4'; ctx.font='11px "Cascadia Mono", Consolas, monospace';
+      const coreText=g.typePrefix?g.typePrefix.toUpperCase():'CORE';
+      ctx.fillText(coreText,coreX-ctx.measureText(coreText).width/2,coreY-3);
+      const syncRatio=Math.max(0,Math.min(1,(g.sync||0)/SYNC_MAX));
+      ctx.strokeStyle=syncRatio>=1?'#d7ba7d':'#5ee6df'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(coreX,coreY,Math.max(8,core.r-7),-Math.PI/2,-Math.PI/2+Math.PI*2*syncRatio); ctx.stroke();
+      ctx.lineWidth=1; ctx.fillStyle=syncRatio>=1?'#d7ba7d':'rgba(159,154,244,.8)';
+      ctx.font='9px "Cascadia Mono", Consolas, monospace';
+      const syncText='S'+Math.round(g.sync||0);
+      ctx.fillText(syncText,coreX-ctx.measureText(syncText).width/2,coreY+11);
+    }
+    ctx.fillStyle='rgba(159,154,244,.72)'; ctx.fillText('SIGNAL PRESSURE',10,112);
+    ctx.strokeStyle='rgba(209,105,105,.35)'; ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(0,pressureY); ctx.lineTo(W,pressureY); ctx.stroke(); ctx.setLineDash([]);
+  }
+  for(const pulse of g.pulses){
+    const q=Math.max(0,Math.min(1,pulse.t/pulse.life));
+    ctx.globalAlpha=(1-q)*.82; ctx.strokeStyle=pulse.color; ctx.lineWidth=1+4*(1-q);
+    ctx.beginPath(); ctx.arc(pulse.x,pulse.y,pulse.r,0,Math.PI*2); ctx.stroke();
+  }
+  ctx.globalAlpha=1; ctx.lineWidth=1;
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   ctx.textBaseline = 'middle';
   const danger = !!g.danger;
@@ -991,32 +1665,27 @@ function draw(){
     ctx.fillStyle = grad;
     ctx.fillRect(0, H-220, W, 220);
   }
+  const drawFocus=focusSelection(g.typePrefix), focusSet=new Set(drawFocus.candidates);
   for (const w of g.words){
     const wx = wordVisualX(w), wy = wordVisualY(w);
     const isNext = !w.resolved && w.order === g.idx;
-    const doomed = w.resolved;
-    const sentenceLocked = g.idx === g.sentence.length;
-    const claimAge = doomed ? performance.now() - w.resolvedAt : 0;
-    // A committed target stays in the world for missile impacts, but should no longer read
-    // as something the player must type. Flash gold, then recede behind the live formation.
-    const claimAlpha = doomed ? (sentenceLocked ? 0.22 : Math.max(0.3, 0.72 - claimAge/900)) : 1;
+    const incoming = w.resolved && !w.settled;
     const dmg = w.maxhp - w.hp;
-    ctx.globalAlpha = claimAlpha;
-    ctx.fillStyle = doomed ? '#18130b' : w.err > 0 ? '#2a1010' : w.flash > 0 ? '#1e321e' : '#0b110b';
-    ctx.strokeStyle = doomed ? '#d7ba7d' : w.err > 0 ? '#d16969' : (isNext && danger) ? '#d16969' : dmg > 0 ? '#6fae6f' : '#2e4e2e';
-    ctx.lineWidth = doomed || dmg > 0 ? 2 : 1;
+    const focused=focusSet.has(w), uniqueFocus=focused && !!drawFocus.chosen;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = focused ? (g.variant==='B'?'#1b1b42':'#102f3b') : w.err > 0 ? '#2a1010' : w.flash > 0 ? '#1e321e' : '#0b110b';
+    ctx.strokeStyle = focused ? (uniqueFocus?'#5ee6df':(g.variant==='B'?'#bdb8ff':'#73d5ee')) : w.err > 0 ? '#d16969' : incoming ? '#5ee6df' : dmg > 0 ? '#6fae6f' : (g.variant==='B'?'#4a477e':'#27687b');
+    ctx.lineWidth = focused ? 3 : incoming || dmg > 0 ? 2 : 1;
     ctx.fillRect(wx, wy, w.w, w.h);
     ctx.strokeRect(wx, wy, w.w, w.h);
-    const baseCol = doomed ? '#d7ba7d' : w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
-    if (doomed && claimAge >= 120){
-      // The word itself is no longer an instruction. Leave a collapsing, crossed-out husk
-      // for homing impacts instead of an apparently actionable word target.
-      ctx.strokeStyle = 'rgba(215,186,125,.8)'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(wx + 7, wy + 6); ctx.lineTo(wx + w.w - 7, wy + w.h - 6);
-      ctx.moveTo(wx + w.w - 7, wy + 6); ctx.lineTo(wx + 7, wy + w.h - 6);
-      ctx.stroke();
-    } else if (isNext && w.consumed > 0){
+    if(focused){
+      ctx.fillStyle=uniqueFocus?'#5ee6df':(g.variant==='B'?'#bdb8ff':'#73d5ee');
+      ctx.font='10px "Cascadia Mono", Consolas, monospace';
+      ctx.fillText(uniqueFocus?'TAB':'FOCUS',wx+5,wy-8);
+      ctx.font='15px "Cascadia Mono", Consolas, monospace';
+    }
+    const baseCol = focused && uniqueFocus ? '#f0f3ff' : w.err > 0 ? '#f0b0b0' : (g.variant==='B'?'#dddafb':'#cbe8ef');
+    if (isNext && w.consumed > 0){
       const pre = w.text.slice(0, w.consumed), rest = w.text.slice(w.consumed);
       const preW = ctx.measureText(pre).width;
       ctx.fillStyle = '#d7ba7d';
@@ -1027,11 +1696,10 @@ function draw(){
       ctx.fillStyle = baseCol;
       ctx.fillText(w.text, wx + 11, wy + w.h/2 + 1);
     }
-    if (doomed && claimAge < 120){
-      ctx.strokeStyle = 'rgba(215,186,125,.8)'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(wx + 6, wy + w.h/2); ctx.lineTo(wx + w.w - 6, wy + w.h/2);
-      ctx.stroke();
+    if(incoming){
+      const pulse=.45+.45*Math.abs(Math.sin(performance.now()/90));
+      ctx.fillStyle='rgba(94,230,223,'+pulse+')';
+      ctx.beginPath(); ctx.arc(wx+w.w-8,wy+7,2.2,0,Math.PI*2); ctx.fill();
     }
     if (dmg > 0){
       ctx.strokeStyle = 'rgba(174,240,174,.5)'; ctx.lineWidth = 1;
@@ -1043,14 +1711,24 @@ function draw(){
     ctx.globalAlpha = 1;
   }
   // homing missiles: oriented streaks with glow
-  ctx.strokeStyle = '#aef0ae'; ctx.lineWidth = 2.5;
-  ctx.shadowColor = '#aef0ae'; ctx.shadowBlur = 8;
+  ctx.strokeStyle = g.variant==='B'?'#bdb8ff':'#9fe9fb'; ctx.lineWidth = 2.5;
+  ctx.shadowColor = g.variant==='B'?'#bdb8ff':'#9fe9fb'; ctx.shadowBlur = 8;
   for (const m of g.missiles){
     const d = Math.hypot(m.vx, m.vy) || 1;
     ctx.beginPath();
     ctx.moveTo(m.x, m.y);
     ctx.lineTo(m.x - m.vx/d*13, m.y - m.vy/d*13);
     ctx.stroke();
+  }
+  ctx.shadowBlur = 0; ctx.lineWidth = 1;
+  // Hostile shots make the language puzzle a real dodge-and-fire loop.
+  ctx.strokeStyle = '#d16969'; ctx.fillStyle = '#f08b8b'; ctx.lineWidth = 2;
+  ctx.shadowColor = '#d16969'; ctx.shadowBlur = 9;
+  for (const s of g.enemyShots){
+    const d = Math.hypot(s.vx,s.vy) || 1;
+    ctx.beginPath(); ctx.moveTo(s.x,s.y);
+    ctx.lineTo(s.x-s.vx/d*11,s.y-s.vy/d*11); ctx.stroke();
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
   }
   ctx.shadowBlur = 0; ctx.lineWidth = 1;
   // lock brackets on the current target
@@ -1065,14 +1743,17 @@ function draw(){
     ctx.stroke(); ctx.lineWidth = 1;
   }
   const sx = g.ship.x, sy = H - 34;
-  ctx.shadowColor = '#8fd48f'; ctx.shadowBlur = 14;
-  ctx.fillStyle = '#8fd48f';
+  ctx.globalAlpha = performance.now() < (g.hitInvulnUntil || 0)
+    ? (.35 + .35*Math.abs(Math.sin(performance.now()/70))) : 1;
+  ctx.shadowColor = g.variant === 'B' ? '#bdb8ff' : '#73d5ee'; ctx.shadowBlur = 14;
+  ctx.fillStyle = g.variant === 'B' ? '#bdb8ff' : '#73d5ee';
   ctx.beginPath();
   ctx.moveTo(sx, sy - 14); ctx.lineTo(sx - 11, sy + 10); ctx.lineTo(sx, sy + 4); ctx.lineTo(sx + 11, sy + 10);
   ctx.closePath(); ctx.fill();
   ctx.shadowBlur = 0;
   ctx.fillStyle = 'rgba(215,186,125,' + (0.4 + Math.random()*0.5) + ')';
   ctx.fillRect(sx - 2, sy + 10, 4, 5 + Math.random()*6);
+  ctx.globalAlpha = 1;
   for (const p of g.parts){
     const a = 1 - p.t/p.life;
     ctx.globalAlpha = a;
@@ -1097,6 +1778,15 @@ cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect();
   tapAt(e.clientX - r.left, e.clientY - r.top);
 });
+cv.addEventListener('pointermove', e => {
+  if (!g || g.over || g.viewportPaused) return;
+  // Both tests use the mouse strictly as an aiming cursor on desktop so held arrows can dodge
+  // independently while the player points at and clicks a chunk. Touch drag still steers.
+  if (e.pointerType === 'mouse') return;
+  const r = cv.getBoundingClientRect();
+  g.ship.x = Math.max(16,Math.min(W-16,e.clientX-r.left));
+  g.ship.manualUntil = performance.now()+500;
+});
 $('start').addEventListener('pointerdown', e => { e.preventDefault(); begin('tap'); });
 $('over').addEventListener('pointerdown', e => { e.preventDefault(); begin(lastMode); });
 $('h-tabs').addEventListener('pointerdown', e => { e.preventDefault(); handleTab(); });
@@ -1104,14 +1794,32 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Tab'){ e.preventDefault(); handleTab(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('start').classList.contains('hidden')){
-    if (e.key.length === 1){ e.preventDefault(); begin('type'); }
+    if (e.key.length === 1){ e.preventDefault(); begin('type'); handleKey(e.key); }
     return;
   }
   if (!$('over').classList.contains('hidden')){
     if (e.key.length === 1 || e.key === 'Enter'){ e.preventDefault(); begin(lastMode); }
     return;
   }
-  if (e.key.length === 1){ e.preventDefault(); handleKey(e.key); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+    e.preventDefault();
+    const side = e.key === 'ArrowLeft' ? 'left' : 'right';
+    if (!moveInput[side]){
+      const nudge = side === 'left' ? -20 : 20;
+      g.ship.x = Math.max(16,Math.min(W-16,g.ship.x+nudge));
+    }
+    moveInput[side] = true;
+    return;
+  }
+  if (e.key.length === 1 || e.key === 'Backspace'){ e.preventDefault(); handleKey(e.key); }
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft') moveInput.left = false;
+  if (e.key === 'ArrowRight') moveInput.right = false;
+});
+window.addEventListener('blur', () => { moveInput.left = false; moveInput.right = false; });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden){ moveInput.left = false; moveInput.right = false; }
 });
 $('start-best').textContent = 'best: ' + (+(localStorage.getItem('shooter2_best') || 0));
 resize();
