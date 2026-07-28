@@ -32,7 +32,15 @@
 ## 트레이스 파이프라인 (이 프로젝트의 학습 기관 — 반드시 유지)
 김록기의 지시: "형용사 피드백 말고 실제 쌓인 데이터를 봐라". 게임필은 에이전트가 판정할 수 없다
 (우리는 화면을 못 느낀다). 그래서:
-- 게임이 세션 전체를 기록: 8Hz 샘플 `{t, d(다음단어→데드라인 px), n, q(판정 후 연출 대기), sp, c, l, m}` + 이벤트
+- 게임이 세션 전체를 기록: pipeline 4의 8Hz 샘플은 기존 `{t, d(다음단어→데드라인 px), n, q(판정 후 연출 대기), sp, c, l, m}`에
+  `scene`을 더한다. `scene.words`는 모든 단어의 렌더/논리 위치·크기·HP·입력 진행·판정/연출 상태·블록/텍스트 가시율·배너 가림률·알파·리코일 잔여시간을,
+  `scene.missiles/particles/banners`는 모든 탄막·모든 잔해·실제 배너 사각형/불투명도를 시간축으로 보존한다. `scene.ui`는 실제 상단 조립문·메시지·점수·오버레이 상태를 보존한다.
+  `sentence_start`는 문장과 초기 배치를, `formation_recoil`은 리코일 시작점/안전 복귀점/기간을, `shield_absorb.before/after`와 `life_lost.before/after`는
+  이동 전후의 전체 장면을 보존한다. 모든 `key_input`/`tap_input`/`tab`/`miss` 이벤트도 그 입력 순간의 전체 `scene`을 가진다. 이 동적 장면 상태를
+  요약 필드로 축소하거나 서브에이전트 보고로 대체하지 말 것. 전체 세션 시간축을 읽은 뒤에만 판단할 것.
+- shield/life 리코일과 후순위 블록의 `wing_recycle`은 논리적 위치를 즉시 안전 편대로 되돌리되, 렌더 위치는 520ms 리코일로 따라간다.
+  후순위 블록을 화면 위 음수 y로 순간이동시켜 정답 단어가 안 보이게 만들지 말 것.
+  이벤트는
   (kill/settle/miss/miss_suppressed/life_lost/shield_absorb/clear/tab/item_stock/item_gain/item_overflow/over). `kill`은 논리 판정,
   `settle.lag`는 실제 폭발까지 걸린 ms다. `miss_suppressed`는 220ms 오답 버스트 안에서 벌점 없이 흡수한 후속 키다.
   아이템 이벤트에는 획득 이유와 사용 후 재고가 남으며, `tab`에는 시작 글자 수와 사용 시점의 위협거리도 남는다.

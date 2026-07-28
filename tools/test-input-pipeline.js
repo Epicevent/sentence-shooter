@@ -44,8 +44,9 @@ const fetchCalls = [];
 const windowHandlers = {};
 const sandbox = {
   console, performance,
-  Math, Date, JSON, Object, Array, String, Number, RegExp, Set, Map,
+  Math, Date, JSON, Object, Array, String, Number, RegExp, Set, Map, TextEncoder,
   setTimeout: () => 0, clearTimeout(){}, requestAnimationFrame(){},
+  getComputedStyle: () => ({ opacity: '1' }),
   fetch: async (...args) => { fetchCalls.push(args); return { ok: true }; },
   localStorage: { getItem: k => storage.get(k) || null, setItem: (k, v) => storage.set(k, String(v)) },
   navigator: { userAgent: 'pipeline-test', vibrate(){} },
@@ -72,13 +73,22 @@ run(`
     const hp = sigLen(text);
     return { text, order, x, y: 180 + order*55, w: 100, h: 32, hp, maxhp: hp,
       flash: 0, consumed: 0, committed: 0, resolved: false, resolvedAt: 0,
-      settled: false, pts: 0 };
+      settled: false, pts: 0, row: Math.floor(order/3) };
   };
   g.words.push(makeWord('Alpha', 0, 100), makeWord('Bravo', 1, 300));
   g.t0 = performance.now(); TRACE.events.length = 0;
 `);
 assert.deepStrictEqual(Array.from(run(`[initialStockEvent.tabs, initialStockEvent.shields]`)), [2, 1],
   'each trace must begin with the item stock granted to the player');
+
+run(`traceSample(34);`);
+assert.strictEqual(run('TRACE.meta.pipeline'), 4, 'replay-complete scene telemetry must use pipeline 4');
+assert.strictEqual(run('TRACE.samples[0].scene.words.length'), 2,
+  'each dynamic sample must retain every word in the current scene');
+assert.strictEqual(run('TRACE.samples[0].scene.words[0].length'), 16,
+  'word scene rows must retain render/logical geometry, combat, visibility, occlusion, alpha, and recoil fields');
+assert.strictEqual(run('TRACE.samples[0].scene.words[0][9] & 4'), 4,
+  'the current target must remain identifiable in the dynamic scene');
 
 run(`handleKey('A'); handleTab();`);
 assert.strictEqual(run('g.idx'), 1, 'Tab must open the next word without waiting for a missile impact');
@@ -87,6 +97,15 @@ assert.deepStrictEqual(Array.from(run(`{
   const e = TRACE.events.find(e => e.type === 'tab');
   [e.at, e.left, Number.isFinite(e.d)];
 }`)), [1, 1, true], 'Tab telemetry must show started progress, remaining stock, and threat distance');
+assert.strictEqual(run(`TRACE.events.find(e => e.type === 'key_input').scene.words.length`), 2,
+  'each key event must retain the exact full scene visible at input time');
+assert.strictEqual(run(`TRACE.events.find(e => e.type === 'tab').scene.words.length`), 2,
+  'each Tab event must retain the exact full scene visible at item-use time');
+assert.deepStrictEqual(Array.from(run(`[
+  TRACE.events.find(e => e.type === 'key_input').order,
+  TRACE.events.find(e => e.type === 'tab').order,
+  TRACE.events.find(e => e.type === 'kill').order
+]`)), [0, 0, 0], 'input, item, and verdict events must identify duplicate-text words by order');
 assert.strictEqual(run('g.words[0].resolved && g.words[0].hp === g.words[0].maxhp'), true,
   'the first word must remain visually alive after its logical death');
 
@@ -163,6 +182,90 @@ assert.deepStrictEqual(Array.from(run(`{
   [e.item, e.reason, e.left, g.tabs];
 }`)), ['tab', 'combo12', 3, 3], 'combo rewards must expose their reason and resulting stock');
 
+run(`
+  g.sentence = ['Target', 'Wing']; g.idx = 0; g.words = []; g.missiles = []; g.fireQueues = [];
+  const targetWord = makeWord('Target', 0, 100), wingWord = makeWord('Wing', 1, 300);
+  targetWord.y = 120; wingWord.y = H - 64 - wingWord.h + 1;
+  g.words.push(targetWord, wingWord); g.speed = 0; g.wordT = 0; g.freeze = 0; TRACE.events.length = 0;
+  update(.016); globalThis.wingImmediateScene = traceScene();
+  wingWord.recoilAt -= RECOIL_MS / 2; globalThis.wingMidScene = traceScene();
+  wingWord.recoilAt -= RECOIL_MS; globalThis.wingSettledScene = traceScene();
+`);
+assert.strictEqual(run(`TRACE.events.some(e => e.type === 'wing_recycle' && e.effect === 'visible_recoil')`), true,
+  'a later-order word crossing the line must record an on-screen recoil instead of an offscreen teleport');
+assert.strictEqual(run(`[wingImmediateScene, wingMidScene, wingSettledScene].every(s => s.words.find(w => w[0]===1)[11] === 100)`), true,
+  'a recycled later-order word must remain readable throughout its complete rebound');
+run(`
+  g.sentence = ['Rebound']; g.idx = 0; g.words = []; g.fireQueues = []; g.freeze = 0;
+  const reboundTarget = makeWord('Rebound', 0, 100);
+  reboundTarget.y = 48; reboundTarget.recoilFromY = 500; reboundTarget.recoilAt = performance.now();
+  g.words.push(reboundTarget);
+  const hitY = wordVisualY(reboundTarget);
+  g.missiles = [{ x:reboundTarget.x + reboundTarget.w/2, y:hitY + reboundTarget.h/2,
+    vx:0, vy:0, target:reboundTarget, dmg:1, letter:'R' }];
+  update(0); globalThis.reboundHp = reboundTarget.hp;
+`);
+assert.strictEqual(run('reboundHp'), run(`sigLen('Rebound') - 1`),
+  'missiles must collide with the visible rebound position rather than the separated logical position');
+
+run(`
+  g.sentence = ['Shielded']; g.idx = 0; g.words = []; g.missiles = []; g.fireQueues = [];
+  const shieldWord = makeWord('Shielded', 0, 100); shieldWord.y = H - 64 - shieldWord.h;
+  g.words.push(shieldWord); g.shields = 1; TRACE.events.length = 0;
+  loseLife(shieldWord);
+`);
+assert.deepStrictEqual(Array.from(run(`{
+  const e = TRACE.events.find(e => e.type === 'shield_absorb');
+  [e.before.inv[1], e.after.inv[1], Math.abs(e.before.words[0][2] - e.after.words[0][2]) <= 2,
+    Math.round(e.after.words[0][14]), e.after.words[0][15] > 0,
+    e.after.banners.some(b => b[1] === 'SHIELD'), e.effect];
+}`)), [1, 0, true, 48, true, true, 'recoil'],
+  'shield telemetry must separate the retained render position from the immediate safe logical regroup');
+run(`g.words[0].recoilAt -= RECOIL_MS; globalThis.settledShieldScene = traceScene();`);
+assert.strictEqual(run('settledShieldScene.words[0][11]'), 100,
+  'the repelled target must settle fully on screen instead of vanishing above the viewport');
+assert.strictEqual(run(`TRACE.events.some(e => e.type === 'formation_recoil' && e.reason === 'shield')`), true,
+  'the dynamic trace must retain the exact shield recoil movement');
+
+run(`
+  g.sentence = Array.from({length: 9}, (_,i) => 'Visible' + i); g.idx = 0;
+  g.words = g.sentence.map((text,i) => {
+    const w = makeWord(text, i, 30 + (i%3)*240);
+    w.y = i === 0 ? H - 64 - w.h : -560 + i*95;
+    return w;
+  });
+  g.shields = 1; TRACE.events.length = 0; loseLife(g.words[0]);
+  for (const w of g.words) w.recoilAt -= RECOIL_MS;
+  globalThis.regroupedScene = traceScene();
+`);
+assert.strictEqual(run(`regroupedScene.words.filter(w => !(w[9]&1)).every(w => w[11] === 100)`), true,
+  'after a shield rebound every live word must finish fully readable on screen');
+assert.strictEqual(run(`new Set(regroupedScene.words.map(w => w[2])).size`), 3,
+  'the rebound must restore the original three-row formation instead of stacking words together');
+
+run(`
+  g.sentence = Array.from({length: 12}, (_,i) => 'Word' + i); g.idx = 0; g.words = [];
+  for (let i=0;i<12;i++) g.words.push(makeWord('Word' + i, i, 20 + (i%3)*230));
+  g.missiles = Array.from({length: 12}, (_,i) => ({ x:100+i*7, y:500-i*9, vx:i*3, vy:-220,
+    target:g.words[i%g.words.length], dmg:1, letter:i%2 ? 'x' : undefined }));
+  g.parts = Array.from({length: 30}, (_,i) => ({ x:i*9, y:i*7, vx:0, vy:30, life:.8, t:.2,
+    color:'#aef0ae', text:i%10===0 ? 'x' : undefined }));
+  TRACE.samples.length = 0;
+  for (let i=0;i<1440;i++) traceSample(78);
+  globalThis.representativeTraceBytes = JSON.stringify(TRACE).length;
+`);
+assert.ok(run('representativeTraceBytes') > 500000,
+  'a three-minute representative trace must retain substantially more than summary telemetry');
+assert.ok(run('representativeTraceBytes') < 12000000,
+  'a three-minute representative trace must remain within the trace ingestion limit');
+
+run(`
+  traceStart('type'); $('msg').textContent = '🛡 replay'; traceSample(34); traceSend(false);
+`);
+const sentTraceBody = fetchCalls.at(-1)[1].body;
+assert.strictEqual(JSON.parse(sentTraceBody).meta.bytes, new TextEncoder().encode(sentTraceBody).byteLength,
+  'the declared payload size must equal the actual UTF-8 body size');
+
 const fetchesBeforeExit = fetchCalls.length;
 run(`traceStart('type'); TRACE.samples.push({ t: 1 }); tEv('kill', { w: 'Fast' });`);
 windowHandlers.pagehide();
@@ -173,5 +276,10 @@ assert.strictEqual(fetchCalls.at(-1)[1].keepalive, true,
 
 assert.ok(source.includes('ctx.globalAlpha = claimAlpha'),
   'resolved targets must visibly recede while their committed missiles settle');
+assert.ok(source.includes('renderY = wordVisualY(t)') && source.includes('m.y >= renderY'),
+  'homing missiles must chase the visible rebound position, not the hidden logical position');
+assert.ok(source.includes("$('hud').appendChild(b)"),
+  'reward and shield banners must live in the HUD instead of covering live word text');
 
-console.log('input pipeline regression tests passed');
+console.log('input pipeline regression tests passed; representative 3-minute visual trace bytes:',
+  run('representativeTraceBytes'));
