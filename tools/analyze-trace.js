@@ -32,6 +32,28 @@ for (const f of files){
   const visual = S.filter(s => s.scene && Array.isArray(s.scene.words));
   const liveRows = s => s.scene.words.filter(w => !(w[9] & 1));
   const targetRow = s => s.scene.words.find(w => w[9] & 4);
+  const overlap = (a,b) => Math.max(0, Math.min(a[1]+a[3],b[1]+b[3])-Math.max(a[1],b[1])) *
+    Math.max(0, Math.min(a[2]+a[4],b[2]+b[4])-Math.max(a[2],b[2]));
+  const overlapAudits = visual.map(s => {
+    const words = liveRows(s), pairs = [];
+    for (let i=0;i<words.length;i++) for (let j=i+1;j<words.length;j++){
+      const area = overlap(words[i], words[j]);
+      if (area > 0) pairs.push([words[i][0], words[j][0], Math.round(area)]);
+    }
+    return { t:s.t, viewport_paused:s.scene.vp || 0, pairs };
+  });
+  const overlapping = overlapAudits.filter(x => x.pairs.length);
+  const maxOverlapPairs = overlapping.reduce((m,x)=>Math.max(m,x.pairs.length),0);
+  const maxOverlapArea = overlapping.reduce((m,x)=>Math.max(m,...x.pairs.map(p=>p[2])),0);
+  const viewportEvents = E.filter(e => ['viewport','viewport_pause','viewport_resume'].includes(e.type)).map(e => ({
+    t:e.t, type:e.type,
+    from:e.from || null, to:e.to || (Number.isFinite(e.w) ? [e.w,e.h] : null),
+    paused:e.paused ?? e.after?.vp ?? (e.type === 'viewport_pause' ? 1 : e.type === 'viewport_resume' ? 0 : null),
+  }));
+  const wingRoutes = E.filter(e => e.type === 'wing_recycle').map(e => ({
+    t:e.t, word:e.w, path:e.path || e.effect, from:[e.from_x ?? null,e.from_y ?? null],
+    rail_x:e.rail_x ?? null, to:[e.to_x ?? null,e.to_y ?? null], visual_delay:e.visual_delay ?? 0,
+  }));
   const sampleAtOrBefore = (t, pool=visual) => {
     let found = null;
     for (const s of pool){ if (s.t > t) break; found = s; }
@@ -40,12 +62,18 @@ for (const f of files){
   const firstAnyVisible = visual.find(s => liveRows(s).some(w => w[11] > 0));
   const firstAllVisible = visual.find(s => liveRows(s).length && liveRows(s).every(w => w[11] === 100));
   const firstTargetVisible = visual.find(s => { const w=targetRow(s); return w && w[11] > 0; });
-  let targetInvisibleMs = 0, noLiveVisibleMs = 0, bannerCoverMs = 0, maxBannerCover = 0;
+  let targetInvisibleMs = 0, noLiveVisibleMs = 0, activeTargetInvisibleMs = 0, activeNoLiveVisibleMs = 0;
+  let pausedMs = 0, bannerCoverMs = 0, maxBannerCover = 0;
   for (let i=0; i+1<visual.length; i++){
     const dt = Math.min(250, Math.max(0, visual[i+1].t - visual[i].t));
     const live = liveRows(visual[i]), target = targetRow(visual[i]);
     if (target && target[11] === 0) targetInvisibleMs += dt;
     if (live.length && !live.some(w => w[11] > 0)) noLiveVisibleMs += dt;
+    if (visual[i].scene.vp) pausedMs += dt;
+    else {
+      if (target && target[11] === 0) activeTargetInvisibleMs += dt;
+      if (live.length && !live.some(w => w[11] > 0)) activeNoLiveVisibleMs += dt;
+    }
     const cover = live.reduce((m,w)=>Math.max(m,w[12]||0),0);
     if (cover > 0) bannerCoverMs += dt;
     maxBannerCover = Math.max(maxBannerCover, cover);
@@ -134,7 +162,16 @@ for (const f of files){
       '| first any/all/target text visible ms', firstAnyVisible?.t ?? null, firstAllVisible?.t ?? null, firstTargetVisible?.t ?? null);
     console.log('visual visibility: live words visible min/max', Math.min(...sceneCounts)+'/'+Math.max(...sceneCounts),
       '| target invisible ms', targetInvisibleMs, '| no live word visible ms', noLiveVisibleMs);
+    console.log('active-play visibility: target invisible ms', activeTargetInvisibleMs,
+      '| no live word visible ms', activeNoLiveVisibleMs, '| viewport-paused ms', pausedMs);
     console.log('visual occlusion: banner overlap ms', bannerCoverMs, '| max covered text %', maxBannerCover);
+    console.log('viewport transitions:', JSON.stringify(viewportEvents));
+    console.log('wing visual routes:', JSON.stringify(wingRoutes));
+    console.log('visual block overlap:', JSON.stringify({
+      samples:overlapping.length, first_t:overlapping[0]?.t ?? null, last_t:overlapping.at(-1)?.t ?? null,
+      max_pairs:maxOverlapPairs, max_area_px2:maxOverlapArea,
+      first_pairs:overlapping[0]?.pairs ?? [], paused_samples:overlapping.filter(x=>x.viewport_paused).length,
+    }));
     console.log('shield visual transitions:', JSON.stringify(shieldVisual));
     console.log('scene completeness:', JSON.stringify({
       pipeline:T.meta.pipeline, samples_declared:T.meta.sample_count, samples_actual:S.length,

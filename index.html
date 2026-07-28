@@ -49,6 +49,11 @@
   .overlay .tap { color: var(--gold); letter-spacing: 3px; animation: blink 1.2s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   .overlay .stats { color: var(--phos); font-size: 14px; line-height: 1.9; }
+  .resize-warning {
+    position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center;
+    padding: 20px; text-align: center; background: rgba(5,7,5,.94); color: var(--gold);
+    font-size: 14px; letter-spacing: 2px; pointer-events: none;
+  }
   .gbanner {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
     font-size: 14px; letter-spacing: 3px; color: var(--bright); z-index: 3;
@@ -81,6 +86,7 @@
 </div>
 <div id="wrap">
   <canvas id="cv"></canvas>
+  <div id="resize-warning" class="resize-warning hidden">WINDOW TOO SHORT<br>ENLARGE TO RESUME</div>
   <div id="start" class="overlay">
     <h1>SENTENCE SHOOTER</h1>
     <div class="sub">
@@ -165,12 +171,19 @@ const cv = $('cv'), ctx = cv.getContext('2d');
 let W = 0, H = 0, dpr = 1;
 
 function resize(){
+  const oldW = W, oldH = H;
+  const before = traceOn && g ? traceScene() : null;
   const r = $('wrap').getBoundingClientRect();
   dpr = Math.min(2, window.devicePixelRatio || 1);
   W = r.width; H = r.height;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (traceOn) tEv('viewport', { w: roundTrace(W), h: roundTrace(H), dpr: roundTrace(dpr) });
+  if (g && !g.over) reflowViewport(oldW, oldH);
+  if (traceOn) tEv('viewport', {
+    from: [roundTrace(oldW), roundTrace(oldH)], to: [roundTrace(W), roundTrace(H)],
+    dpr: roundTrace(dpr), paused: g?.viewportPaused ? 1 : 0,
+    before, after: g ? traceScene() : null,
+  });
 }
 window.addEventListener('resize', resize);
 
@@ -216,7 +229,7 @@ function traceStart(mode){
     started: performance.now(), mode, pipeline: 4, ua: navigator.userAgent.slice(0, 60),
     w: W, h: H, dpr, at: Date.now(), hz: 8,
     // Compact scene rows retain enough state to reconstruct/query the changing playfield.
-    word_fields: ['order','x','render_y','w','h','hp','maxhp','consumed','committed','flags','block_vis','text_vis','banner_cover','alpha','logic_y','recoil_ms'],
+    word_fields: ['order','render_x','render_y','w','h','hp','maxhp','consumed','committed','flags','block_vis','text_vis','banner_cover','alpha','logic_y','recoil_ms','logic_x'],
     missile_fields: ['x','y','vx','vy','target_order','dmg','letter'],
     particle_fields: ['x','y','vx','vy','life_ms','age_ms','color','text'],
     banner_fields: ['id','text','gold','x','y','w','h','opacity'],
@@ -236,15 +249,40 @@ function visiblePct(r){
   const area = rectArea(r);
   return area ? Math.round(100 * rectIntersection(r, { x: 0, y: 0, w: W, h: H }) / area) : 0;
 }
-const RECOIL_MS = 520;
+const RECOIL_MS = 520, MIN_PLAY_HEIGHT = 460;
+function recoilProgress(w, now){
+  if (!Number.isFinite(w.recoilAt)) return 1;
+  return Math.max(0, Math.min(1, ((now || performance.now()) - w.recoilAt) / RECOIL_MS));
+}
+function wordVisualX(w, now){
+  now = now || performance.now();
+  const p = recoilProgress(w, now);
+  if (p >= 1 || !Number.isFinite(w.recoilFromX)) return w.x;
+  if (Number.isFinite(w.recoilRailX)){
+    if (p < .2){ const q=1-Math.pow(1-p/.2,3); return w.recoilFromX+(w.recoilRailX-w.recoilFromX)*q; }
+    if (p <= .8) return w.recoilRailX;
+    const q=1-Math.pow(1-(p-.8)/.2,3); return w.recoilRailX+(w.x-w.recoilRailX)*q;
+  }
+  if (w.recoilSettleEarly && p <= .8) return w.recoilFromX;
+  const q = w.recoilSettleEarly ? Math.max(0,(p-.8)/.2) : p;
+  const eased = 1-Math.pow(1-q,3);
+  return w.recoilFromX+(w.x-w.recoilFromX)*eased;
+}
 function wordVisualY(w, now){
   now = now || performance.now();
   if (!Number.isFinite(w.recoilFromY) || !Number.isFinite(w.recoilAt)) return w.y;
-  const p = Math.max(0, Math.min(1, (now - w.recoilAt) / RECOIL_MS));
+  const p = recoilProgress(w, now);
   if (p >= 1) return w.y;
-  // Ease-out-back: the block visibly rebounds past its safe position, then settles.
-  const z = p - 1, eased = 1 + 2.45*z*z*z + 1.45*z*z;
-  return w.recoilFromY + (w.y - w.recoilFromY) * eased;
+  if (Number.isFinite(w.recoilRailX)){
+    if (p <= .2) return w.recoilFromY;
+    if (p >= .8) return w.y;
+    const q=(p-.2)/.6, eased=1-Math.pow(1-q,3);
+    return w.recoilFromY+(w.y-w.recoilFromY)*eased;
+  }
+  // Formation rebounds share monotone progress and a common upward kick, so ordered rows cannot cross.
+  const q = w.recoilSettleEarly ? Math.min(1,p/.8) : p;
+  const eased = 1 - Math.pow(1-q, 3), kick = -10 * Math.sin(Math.PI*q);
+  return w.recoilFromY + (w.y - w.recoilFromY) * eased + kick;
 }
 function formationStageY(w){
   const rows = Math.max(1, Math.ceil(g.sentence.length / 3));
@@ -253,19 +291,112 @@ function formationStageY(w){
   const gap = rows > 1 ? (bottom - top) / (rows - 1) : 0;
   return top + (w.row || 0) * gap;
 }
-function beginWordRecoil(w, to, now){
-  now = now || performance.now();
-  const from = wordVisualY(w, now);
-  w.y = to; w.recoilFromY = from; w.recoilAt = now;
-  return [w.order, roundTrace(from), roundTrace(to)];
+function formationLaneX(w){
+  const margin = 8, col = Number.isInteger(w.col) ? w.col : (w.order % 3);
+  const laneW = Math.max(1, (W - margin*2) / 3);
+  return Math.max(margin, Math.min(W - margin - w.w, margin + col*laneW + (laneW-w.w)/2));
 }
-function recoilFormation(reason){
-  const now = performance.now(), movement = [];
+function reflowViewport(oldW, oldH){
+  if (!g || g.over) return;
+  const now = performance.now(), wasPaused = !!g.viewportPaused;
+  for (const w of g.words) w.x = formationLaneX(w);
+  g.ship.x = Math.max(14, Math.min(W - 14, g.ship.x));
+
+  if (H < MIN_PLAY_HEIGHT){
+    if (!wasPaused){
+      g.viewportPaused = true; g.viewportPauseAt = now;
+      g.messageBeforePause = $('msg').innerHTML;
+      tEv('viewport_pause', { w:roundTrace(W), h:roundTrace(H), min_h:MIN_PLAY_HEIGHT });
+    }
+    $('resize-warning').classList.remove('hidden');
+    g.lastT = now;
+    return;
+  }
+
+  $('resize-warning').classList.add('hidden');
+  if (wasPaused){
+    const pausedMs = Math.max(0, now - (g.viewportPauseAt || now));
+    g.viewportPaused = false; g.viewportPauseAt = 0;
+    g.t0 += pausedMs;
+    if (g.messageBeforePause !== null) $('msg').innerHTML = g.messageBeforePause;
+    g.messageBeforePause = null;
+    recoilFormation('viewport_resume', true);
+    tEv('viewport_resume', { w:roundTrace(W), h:roundTrace(H), paused_ms:Math.round(pausedMs) });
+  } else if (oldH > 0 && oldW > 0){
+    const scaleY = Math.max(1, H - 64) / Math.max(1, oldH - 64);
+    for (const w of g.words){
+      w.y *= scaleY;
+      w.recoilFromY = null; w.recoilFromX = null; w.recoilRailX = null; w.recoilAt = null;
+    }
+  }
+  g.lastT = now;
+}
+function beginWordRecoil(w, to, now, railX, settleEarly, startAt){
+  now = now || performance.now();
+  const fromY = wordVisualY(w, now), fromX = wordVisualX(w, now);
+  w.y = to; w.recoilFromY = fromY; w.recoilFromX = fromX;
+  w.recoilRailX = Number.isFinite(railX) ? railX : null;
+  w.recoilSettleEarly = !!settleEarly; w.recoilAt = Number.isFinite(startAt) ? startAt : now;
+  return [w.order, roundTrace(fromY), roundTrace(to), w.col, w.row,
+    roundTrace(fromX), roundTrace(w.x), Number.isFinite(railX) ? roundTrace(railX) : null];
+}
+function stabilizeFormationRows(now){
+  const columns = new Map();
   for (const w of g.words){
     if (w.resolved) continue;
-    movement.push(beginWordRecoil(w, formationStageY(w), now));
+    if (!columns.has(w.col)) columns.set(w.col, []);
+    columns.get(w.col).push(w);
   }
-  tEv('formation_recoil', { reason, duration: RECOIL_MS, words: movement });
+  for (const words of columns.values()){
+    words.sort((a,b) => wordVisualY(a, now) - wordVisualY(b, now) || a.order - b.order);
+    words.forEach((w,row) => { w.row = row; });
+  }
+}
+function recoilFormation(reason, visibleStart){
+  const now = performance.now(), movement = [];
+  g.nextWingRecoilAt = now;
+  const settleEarly = g.words.some(w => !w.resolved && Math.abs(wordVisualX(w,now)-w.x)>1);
+  stabilizeFormationRows(now);
+  for (const w of g.words){
+    if (w.resolved) continue;
+    const target=formationStageY(w);
+    if (visibleStart){
+      w.y=target; w.recoilFromY=Math.min(H-64-w.h,target+24); w.recoilFromX=w.x;
+      w.recoilRailX=null; w.recoilSettleEarly=false; w.recoilAt=now;
+      movement.push([w.order,roundTrace(w.recoilFromY),roundTrace(target),w.col,w.row,
+        roundTrace(w.x),roundTrace(w.x),null]);
+    } else movement.push(beginWordRecoil(w, target, now, null, settleEarly));
+  }
+  tEv('formation_recoil', { reason, visible_start:!!visibleStart, duration:RECOIL_MS, words:movement });
+  return movement;
+}
+function recoilRailX(w, now, startAt){
+  startAt = Number.isFinite(startAt) ? startAt : now;
+  const laneW=(W-16)/3;
+  const candidates=[8, 8+laneW-w.w/2, 8+laneW*2-w.w/2, W-8-w.w]
+    .map(x=>Math.max(8,Math.min(W-8-w.w,x)));
+  const others=g.words.filter(x=>x!==w && !x.resolved);
+  const score=x=>others.reduce((gap,o)=>{
+    const activeRail=Number.isFinite(o.recoilRailX) && o.recoilAt < startAt+RECOIL_MS && o.recoilAt+RECOIL_MS > startAt;
+    const ox=activeRail ? o.recoilRailX : o.x;
+    return Math.min(gap, Math.max(ox-(x+w.w), x-(ox+o.w)));
+  }, Infinity);
+  return candidates.reduce((best,x)=>score(x)>score(best)?x:best,candidates[0]);
+}
+function safeWingY(w, now){
+  const top=Math.max(44,Math.min(68,H*.08)), gap=Math.max(40,w.h+8);
+  const others=g.words.filter(x=>x!==w && !x.resolved);
+  for (let slot=0;slot<6;slot++){
+    const y=top+slot*gap;
+    if (y+w.h>Math.min(H*.38,H-260)) break;
+    const clear=others.every(o=>{
+      const active=Number.isFinite(o.recoilRailX) && recoilProgress(o,now)<1;
+      const oy=active ? o.y : wordVisualY(o,now);
+      return y+w.h+6<=oy || oy+o.h+6<=y;
+    });
+    if (clear) return y;
+  }
+  return top;
 }
 function traceBannerRows(){
   const wrapRect = $('wrap').getBoundingClientRect();
@@ -287,19 +418,19 @@ function traceScene(now){
     const isNext = !w.resolved && w.order === g.idx;
     const claimAge = w.resolved ? now - w.resolvedAt : 0;
     const alpha = w.resolved ? (g.idx === g.sentence.length ? 0.22 : Math.max(0.3, 0.72 - claimAge/900)) : 1;
-    const renderY = wordVisualY(w, now);
-    const block = { x: w.x, y: renderY, w: w.w, h: w.h };
+    const renderX = wordVisualX(w, now), renderY = wordVisualY(w, now);
+    const block = { x: renderX, y: renderY, w: w.w, h: w.h };
     const textW = Math.max(1, w.w - 22);
-    const textRect = { x: w.x + 11, y: renderY + (w.h - 16)/2, w: textW, h: 16 };
+    const textRect = { x: renderX + 11, y: renderY + (w.h - 16)/2, w: textW, h: 16 };
     let bannerCover = 0;
     for (const b of bannerRects) bannerCover = Math.max(bannerCover,
       rectArea(textRect) ? rectIntersection(textRect, b) / rectArea(textRect) * b.opacity : 0);
     const flags = (w.resolved ? 1 : 0) | (w.settled ? 2 : 0) | (isNext ? 4 : 0) |
       (w.err > 0 ? 8 : 0) | (w.flash > 0 ? 16 : 0) | (w.auto ? 32 : 0);
-    return [w.order, roundTrace(w.x), roundTrace(renderY), roundTrace(w.w), roundTrace(w.h),
+    return [w.order, roundTrace(renderX), roundTrace(renderY), roundTrace(w.w), roundTrace(w.h),
       w.hp, w.maxhp, w.consumed || 0, w.committed || 0, flags,
       visiblePct(block), visiblePct(textRect), Math.round(bannerCover * 100), Math.round(alpha * 100),
-      roundTrace(w.y), Math.max(0, Math.round(RECOIL_MS - (now - (w.recoilAt || 0))))];
+      roundTrace(w.y), Math.max(0, Math.round(RECOIL_MS - (now - (w.recoilAt || 0)))), roundTrace(w.x)];
   });
   const missiles = g.missiles.map(m => [roundTrace(m.x), roundTrace(m.y), roundTrace(m.vx), roundTrace(m.vy),
     m.target ? m.target.order : null, m.dmg || 0, m.letter || '']);
@@ -307,6 +438,7 @@ function traceScene(now){
     Math.round(p.life * 1000), Math.round(p.t * 1000), p.color || '', p.text || '']);
   return {
     i: g.idx, f: Math.max(0, Math.round(g.freeze * 1000)), d: g.danger ? 1 : 0,
+    vp: g.viewportPaused ? 1 : 0,
     ship: [roundTrace(g.ship.x), roundTrace(H - 34)], lock: g.lock ? g.lock.order : null,
     inv: [g.tabs, g.shields, g.lives, g.combo],
     words, missiles, particles,
@@ -364,7 +496,8 @@ function startGame(mode){
     tabs: 2, shields: 1, perfect: true, nextLife: 10000,
     wordT: 0, beatT: 0,
     idx: 0, sentence: null, recent: [],
-    speed: 24, eff: 24, builtDrawn: '', over: false, lastT: performance.now(), t0: 0,
+    speed: 24, eff: 24, builtDrawn: '', viewportPaused: false, viewportPauseAt: 0, nextWingRecoilAt: 0,
+    messageBeforePause: null, over: false, lastT: performance.now(), t0: 0,
   };
   for (let i = 0; i < 44; i++)
     g.stars.push({ x: Math.random()*W, y: Math.random()*H, v: 30 + Math.random()*70 });
@@ -376,6 +509,8 @@ function startGame(mode){
   traceStart(g.mode);
   tEv('item_stock', { reason: 'start', tabs: g.tabs, shields: g.shields });
   nextSentence();
+  if (H < MIN_PLAY_HEIGHT) reflowViewport(W, H);
+  else $('resize-warning').classList.add('hidden');
   requestAnimationFrame(frame);
 }
 
@@ -402,6 +537,8 @@ function nextSentence(){
   g.recent.push(ans); if (g.recent.length > 12) g.recent.shift();
   g.sentence = ans.split(' ');
   g.idx = 0; g.t0 = performance.now(); g.perfect = true;
+  g.nextWingRecoilAt = g.t0;
+  if (g.viewportPaused) g.viewportPauseAt = g.t0;
   // ZType-measured curve: enemies are slow (~29px/s) but growth is geometric (+5%/wave)
   g.speed = Math.min(95, 34 * Math.pow(1.05, g.solved));
   g.wordT = 0;
@@ -422,7 +559,7 @@ function nextSentence(){
     g.words.push({
       text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0,
       committed: 0, resolved: false, resolvedAt: 0, settled: false, pts: 0,
-      row,
+      row, col,
     });
   });
   tEv('sentence_start', { solved: g.solved, speed: roundTrace(g.speed),
@@ -471,12 +608,12 @@ function popText(x, y, text, color){
 
 // tap-to-lock, ZType style: the ship fires a stream of homing missiles at the locked word
 function tapAt(x, y){
-  if (!g || g.over) return;   // keyboard and pointer both live, always
+  if (!g || g.over || g.viewportPaused) return;   // keyboard and pointer both live when play is visible
   // A resolved word remains visible for its impacts, but is no longer an input target.
   const now = performance.now();
   const w = g.words.find(w => {
-    const wy = wordVisualY(w, now);
-    return !w.resolved && x >= w.x - 8 && x <= w.x + w.w + 8 && y >= wy - 8 && y <= wy + w.h + 8;
+    const wx = wordVisualX(w, now), wy = wordVisualY(w, now);
+    return !w.resolved && x >= wx - 8 && x <= wx + w.w + 8 && y >= wy - 8 && y <= wy + w.h + 8;
   });
   if (!w) return;
   tEv('tap_input', { x: roundTrace(x), y: roundTrace(y), order: w.order, w: w.text,
@@ -539,7 +676,7 @@ function spawnMissiles(dt){
 
 // TYPE MODE: every correct keystroke is a missile; escorts join at higher marks
 function handleKey(key){
-  if (!g || g.over || key.length !== 1) return;
+  if (!g || g.over || g.viewportPaused || key.length !== 1) return;
   const t = g.words.find(w => w.order === g.idx);
   if (!t || t.consumed >= t.text.length) return;
   const expected = t.text[t.consumed];
@@ -577,7 +714,7 @@ function handleKey(key){
 
 // TAB = shell-style completion: finishes the word you already started (never a bomb)
 function handleTab(){
-  if (!g || g.over) return;
+  if (!g || g.over || g.viewportPaused) return;
   const t = g.words.find(w => w.order === g.idx);
   if (!t) return;
   const started = t.consumed > 0 || t.committed > 0 || t.hp < t.maxhp;
@@ -654,16 +791,16 @@ function resolveWord(word){
 
 function settleWord(word, forced){
   if (!word || word.settled) return;
-  const visualY = wordVisualY(word);
+  const visualX = wordVisualX(word), visualY = wordVisualY(word);
   word.settled = true;
   g.words = g.words.filter(w => w !== word);
   if (g.lock === word) g.lock = null;
   const lag = Math.max(0, Math.round(performance.now() - word.resolvedAt));
   tEv('settle', { order:word.order, w: word.text, lag, forced: !!forced });
   sfx.boom(); buzz(25); shake();
-  spawnParts(word.x + word.w/2, visualY + word.h/2, 14, '#d7ba7d', 160);
-  spawnParts(word.x + word.w/2, visualY + word.h/2, 8, '#aef0ae', 90);
-  popText(word.x + word.w/2, visualY, '+' + word.pts, '#d7ba7d');
+  spawnParts(visualX + word.w/2, visualY + word.h/2, 14, '#d7ba7d', 160);
+  spawnParts(visualX + word.w/2, visualY + word.h/2, 8, '#aef0ae', 90);
+  popText(visualX + word.w/2, visualY, '+' + word.pts, '#d7ba7d');
 }
 
 function sentenceClear(){
@@ -749,7 +886,7 @@ function frame(now){
   if (!g) return;
   const dt = Math.min(0.05, (now - g.lastT)/1000); g.lastT = now;
   if (!g.over){
-    update(dt);
+    if (!g.viewportPaused) update(dt);
     draw();
     traceAcc += dt;
     if (traceAcc >= 0.125){ traceAcc %= 0.125; traceSample(g.eff || g.speed); }
@@ -758,6 +895,7 @@ function frame(now){
 }
 
 function update(dt){
+  if (g.viewportPaused) return;
   if (g.freeze > 0){ g.freeze -= dt; return; }   // hit-stop
   for (const s of g.stars){ s.y += s.v*dt; if (s.y > H){ s.y = -2; s.x = Math.random()*W; } }
   g.wordT += dt;
@@ -773,27 +911,31 @@ function update(dt){
       if (w.order === g.idx){ loseLife(w); return; }
       // ZType lesson: every ship on screen must have teeth. an armored word
       // slipping past permanently angers the whole formation.
-      const movement = beginWordRecoil(w, formationStageY(w));
-      tEv('wing_recycle', { order: w.order, w: w.text, from_y: movement[1], to_y: movement[2],
-        target: g.idx, effect: 'visible_recoil', duration: RECOIL_MS });
+      const now=performance.now(), startAt=Math.max(now,g.nextWingRecoilAt||now);
+      g.nextWingRecoilAt=startAt+RECOIL_MS+40;
+      const rail=recoilRailX(w,now,startAt), safeY=safeWingY(w,now);
+      const recycled = beginWordRecoil(w, safeY, now, rail, false, startAt);
+      tEv('wing_recycle', { order: w.order, w: w.text, from_y: recycled[1], to_y: recycled[2],
+        from_x:recycled[5], to_x:recycled[6], rail_x:recycled[7], path:'side_up_return',
+        visual_delay:Math.round(startAt-now), target: g.idx, effect: 'visible_recoil', duration: RECOIL_MS });
       g.speed = Math.min(120, g.speed * 1.1);
       tone(70, 45, .2, 'sine', .12);
     }
   }
   // the ship slides under its locked target on its own — you aim by choosing, not steering
-  if (g.lock) g.ship.x += ((g.lock.x + g.lock.w/2) - g.ship.x) * Math.min(1, 8*dt);
+  if (g.lock) g.ship.x += ((wordVisualX(g.lock) + g.lock.w/2) - g.ship.x) * Math.min(1, 8*dt);
   spawnMissiles(dt);
   for (const m of g.missiles){
     const t = m.target;
     if (!t || !g.words.includes(t)){ m.y += -560*dt; m.dead = m.y < -20; continue; }
-    const renderY = wordVisualY(t), tx = t.x + t.w/2, ty = renderY + t.h/2;
+    const renderX = wordVisualX(t), renderY = wordVisualY(t), tx = renderX + t.w/2, ty = renderY + t.h/2;
     const dx = tx - m.x, dy = ty - m.y, d = Math.hypot(dx, dy) || 1;
     const k = Math.min(1, 7*dt);
     m.vx += (dx/d*620 - m.vx) * k;
     m.vy += (dy/d*620 - m.vy) * k;
     m.x += m.vx*dt; m.y += m.vy*dt;
     if (Math.random() < 0.6) g.parts.push({ x: m.x, y: m.y, vx: 0, vy: 30, life: .25, t: 0, color: '#5a7a5a' });
-    if (m.x >= t.x && m.x <= t.x+t.w && m.y >= renderY && m.y <= renderY+t.h){
+    if (m.x >= renderX && m.x <= renderX+t.w && m.y >= renderY && m.y <= renderY+t.h){
       m.dead = true;
       t.flash = .12;
       spawnParts(m.x, m.y, 4, '#aef0ae', 90);
@@ -850,7 +992,7 @@ function draw(){
     ctx.fillRect(0, H-220, W, 220);
   }
   for (const w of g.words){
-    const wy = wordVisualY(w);
+    const wx = wordVisualX(w), wy = wordVisualY(w);
     const isNext = !w.resolved && w.order === g.idx;
     const doomed = w.resolved;
     const sentenceLocked = g.idx === g.sentence.length;
@@ -863,39 +1005,39 @@ function draw(){
     ctx.fillStyle = doomed ? '#18130b' : w.err > 0 ? '#2a1010' : w.flash > 0 ? '#1e321e' : '#0b110b';
     ctx.strokeStyle = doomed ? '#d7ba7d' : w.err > 0 ? '#d16969' : (isNext && danger) ? '#d16969' : dmg > 0 ? '#6fae6f' : '#2e4e2e';
     ctx.lineWidth = doomed || dmg > 0 ? 2 : 1;
-    ctx.fillRect(w.x, wy, w.w, w.h);
-    ctx.strokeRect(w.x, wy, w.w, w.h);
+    ctx.fillRect(wx, wy, w.w, w.h);
+    ctx.strokeRect(wx, wy, w.w, w.h);
     const baseCol = doomed ? '#d7ba7d' : w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
     if (doomed && claimAge >= 120){
       // The word itself is no longer an instruction. Leave a collapsing, crossed-out husk
       // for homing impacts instead of an apparently actionable word target.
       ctx.strokeStyle = 'rgba(215,186,125,.8)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(w.x + 7, wy + 6); ctx.lineTo(w.x + w.w - 7, wy + w.h - 6);
-      ctx.moveTo(w.x + w.w - 7, wy + 6); ctx.lineTo(w.x + 7, wy + w.h - 6);
+      ctx.moveTo(wx + 7, wy + 6); ctx.lineTo(wx + w.w - 7, wy + w.h - 6);
+      ctx.moveTo(wx + w.w - 7, wy + 6); ctx.lineTo(wx + 7, wy + w.h - 6);
       ctx.stroke();
     } else if (isNext && w.consumed > 0){
       const pre = w.text.slice(0, w.consumed), rest = w.text.slice(w.consumed);
       const preW = ctx.measureText(pre).width;
       ctx.fillStyle = '#d7ba7d';
-      ctx.fillText(pre, w.x + 11, wy + w.h/2 + 1);
+      ctx.fillText(pre, wx + 11, wy + w.h/2 + 1);
       ctx.fillStyle = baseCol;
-      ctx.fillText(rest, w.x + 11 + preW, wy + w.h/2 + 1);
+      ctx.fillText(rest, wx + 11 + preW, wy + w.h/2 + 1);
     } else {
       ctx.fillStyle = baseCol;
-      ctx.fillText(w.text, w.x + 11, wy + w.h/2 + 1);
+      ctx.fillText(w.text, wx + 11, wy + w.h/2 + 1);
     }
     if (doomed && claimAge < 120){
       ctx.strokeStyle = 'rgba(215,186,125,.8)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(w.x + 6, wy + w.h/2); ctx.lineTo(w.x + w.w - 6, wy + w.h/2);
+      ctx.moveTo(wx + 6, wy + w.h/2); ctx.lineTo(wx + w.w - 6, wy + w.h/2);
       ctx.stroke();
     }
     if (dmg > 0){
       ctx.strokeStyle = 'rgba(174,240,174,.5)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(w.x + w.w*0.3, wy); ctx.lineTo(w.x + w.w*0.4, wy + w.h*0.6);
-      if (dmg > 1){ ctx.moveTo(w.x + w.w*0.7, wy + w.h); ctx.lineTo(w.x + w.w*0.6, wy + w.h*0.3); }
+      ctx.moveTo(wx + w.w*0.3, wy); ctx.lineTo(wx + w.w*0.4, wy + w.h*0.6);
+      if (dmg > 1){ ctx.moveTo(wx + w.w*0.7, wy + w.h); ctx.lineTo(wx + w.w*0.6, wy + w.h*0.3); }
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -913,13 +1055,13 @@ function draw(){
   ctx.shadowBlur = 0; ctx.lineWidth = 1;
   // lock brackets on the current target
   if (g.lock){
-    const t = g.lock, ty = wordVisualY(t), c = 7;
+    const t = g.lock, tx = wordVisualX(t), ty = wordVisualY(t), c = 7;
     ctx.strokeStyle = '#d7ba7d'; ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(t.x-4, ty-4+c); ctx.lineTo(t.x-4, ty-4); ctx.lineTo(t.x-4+c, ty-4);
-    ctx.moveTo(t.x+t.w+4-c, ty-4); ctx.lineTo(t.x+t.w+4, ty-4); ctx.lineTo(t.x+t.w+4, ty-4+c);
-    ctx.moveTo(t.x-4, ty+t.h+4-c); ctx.lineTo(t.x-4, ty+t.h+4); ctx.lineTo(t.x-4+c, ty+t.h+4);
-    ctx.moveTo(t.x+t.w+4-c, ty+t.h+4); ctx.lineTo(t.x+t.w+4, ty+t.h+4); ctx.lineTo(t.x+t.w+4, ty+t.h+4-c);
+    ctx.moveTo(tx-4, ty-4+c); ctx.lineTo(tx-4, ty-4); ctx.lineTo(tx-4+c, ty-4);
+    ctx.moveTo(tx+t.w+4-c, ty-4); ctx.lineTo(tx+t.w+4, ty-4); ctx.lineTo(tx+t.w+4, ty-4+c);
+    ctx.moveTo(tx-4, ty+t.h+4-c); ctx.lineTo(tx-4, ty+t.h+4); ctx.lineTo(tx-4+c, ty+t.h+4);
+    ctx.moveTo(tx+t.w+4-c, ty+t.h+4); ctx.lineTo(tx+t.w+4, ty+t.h+4); ctx.lineTo(tx+t.w+4, ty+t.h+4-c);
     ctx.stroke(); ctx.lineWidth = 1;
   }
   const sx = g.ship.x, sy = H - 34;

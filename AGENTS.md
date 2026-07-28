@@ -38,7 +38,14 @@
   `sentence_start`는 문장과 초기 배치를, `formation_recoil`은 리코일 시작점/안전 복귀점/기간을, `shield_absorb.before/after`와 `life_lost.before/after`는
   이동 전후의 전체 장면을 보존한다. 모든 `key_input`/`tap_input`/`tab`/`miss` 이벤트도 그 입력 순간의 전체 `scene`을 가진다. 이 동적 장면 상태를
   요약 필드로 축소하거나 서브에이전트 보고로 대체하지 말 것. 전체 세션 시간축을 읽은 뒤에만 판단할 것.
+- 브라우저 높이가 460px 미만이면 게임 시간·입력·충돌을 함께 멈추고 `viewport_pause`를 기록한다. 다시 커지면 단어를 겹치지 않는 안전 편대로 한 번 복귀시킨 뒤
+  `viewport_resume`을 기록한다. 각 `viewport` 이벤트에는 전후 크기와 전후 전체 장면을 남기고, `scene.vp`로 프레임별 정지 상태를 남긴다.
+  복원 오버레이가 사라지는 첫 프레임부터 모든 텍스트가 완전히 보여야 한다. 분석기는 모든 프레임에서 실제 렌더 사각형의 교차 쌍·면적을 계산해야 하며,
+  작은 창에 행 간격을 압축해 겹친 채 목숨을 소모시키지 말 것.
 - shield/life 리코일과 후순위 블록의 `wing_recycle`은 논리적 위치를 즉시 안전 편대로 되돌리되, 렌더 위치는 520ms 리코일로 따라간다.
+  shield/life/viewport 전체 복귀는 같은 열의 현재 위아래 순서를 보존하고 동일한 단조 진행률로 함께 움직인다. 후순위 단일 블록은 다른 블록의 논리 위치를
+  되감지 않고 화면 안의 빈 옆 통로(`side_up_return`)로 빠진 뒤 위로 올라온다. 여러 개가 동시에 돌파하면 렌더 복귀만 직렬화하고 서로 다른 상단 복귀 높이를
+  예약해, 논리 판정 시각은 늦추지 않으면서 경로 도중 블록끼리 교차하지 않게 한다.
   후순위 블록을 화면 위 음수 y로 순간이동시켜 정답 단어가 안 보이게 만들지 말 것.
   이벤트는
   (kill/settle/miss/miss_suppressed/life_lost/shield_absorb/clear/tab/item_stock/item_gain/item_overflow/over). `kill`은 논리 판정,

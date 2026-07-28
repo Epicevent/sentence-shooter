@@ -12,6 +12,7 @@ const html = process.env.SHOOTER_REV
   : fs.readFileSync(path.join(repo, 'index.html'), 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
+const viewport = { w:800, h:600 };
 function element(id){
   const classes = new Set(id === 'start' ? [] : ['hidden']);
   return {
@@ -22,7 +23,8 @@ function element(id){
       contains: x => classes.has(x),
     },
     addEventListener(){}, appendChild(){}, remove(){},
-    getBoundingClientRect(){ return { left: 0, top: 0, width: 800, height: 600 }; },
+    getBoundingClientRect(){ return { left: 0, top: 0,
+      width: id === 'wrap' ? viewport.w : 800, height: id === 'wrap' ? viewport.h : 600 }; },
   };
 }
 
@@ -73,7 +75,7 @@ run(`
     const hp = sigLen(text);
     return { text, order, x, y: 180 + order*55, w: 100, h: 32, hp, maxhp: hp,
       flash: 0, consumed: 0, committed: 0, resolved: false, resolvedAt: 0,
-      settled: false, pts: 0, row: Math.floor(order/3) };
+      settled: false, pts: 0, row: Math.floor(order/3), col: order%3 };
   };
   g.words.push(makeWord('Alpha', 0, 100), makeWord('Bravo', 1, 300));
   g.t0 = performance.now(); TRACE.events.length = 0;
@@ -85,8 +87,8 @@ run(`traceSample(34);`);
 assert.strictEqual(run('TRACE.meta.pipeline'), 4, 'replay-complete scene telemetry must use pipeline 4');
 assert.strictEqual(run('TRACE.samples[0].scene.words.length'), 2,
   'each dynamic sample must retain every word in the current scene');
-assert.strictEqual(run('TRACE.samples[0].scene.words[0].length'), 16,
-  'word scene rows must retain render/logical geometry, combat, visibility, occlusion, alpha, and recoil fields');
+assert.strictEqual(run('TRACE.samples[0].scene.words[0].length'), 17,
+  'word scene rows must retain render/logical x/y geometry, combat, visibility, occlusion, alpha, and recoil fields');
 assert.strictEqual(run('TRACE.samples[0].scene.words[0][9] & 4'), 4,
   'the current target must remain identifiable in the dynamic scene');
 
@@ -185,8 +187,10 @@ assert.deepStrictEqual(Array.from(run(`{
 run(`
   g.sentence = ['Target', 'Wing']; g.idx = 0; g.words = []; g.missiles = []; g.fireQueues = [];
   const targetWord = makeWord('Target', 0, 100), wingWord = makeWord('Wing', 1, 300);
+  targetWord.col = wingWord.col = 0; targetWord.row = 0; wingWord.row = 1; wingWord.x = targetWord.x;
   targetWord.y = 120; wingWord.y = H - 64 - wingWord.h + 1;
   g.words.push(targetWord, wingWord); g.speed = 0; g.wordT = 0; g.freeze = 0; TRACE.events.length = 0;
+  globalThis.targetBeforeWingRecycle = targetWord.y;
   update(.016); globalThis.wingImmediateScene = traceScene();
   wingWord.recoilAt -= RECOIL_MS / 2; globalThis.wingMidScene = traceScene();
   wingWord.recoilAt -= RECOIL_MS; globalThis.wingSettledScene = traceScene();
@@ -195,6 +199,48 @@ assert.strictEqual(run(`TRACE.events.some(e => e.type === 'wing_recycle' && e.ef
   'a later-order word crossing the line must record an on-screen recoil instead of an offscreen teleport');
 assert.strictEqual(run(`[wingImmediateScene, wingMidScene, wingSettledScene].every(s => s.words.find(w => w[0]===1)[11] === 100)`), true,
   'a recycled later-order word must remain readable throughout its complete rebound');
+assert.strictEqual(run(`Math.abs(g.words.find(w=>w.order===0).y-targetBeforeWingRecycle)<1`), true,
+  'a later-order recycle must not rewind the target logical position and make the game immortal');
+run(`
+  g.sentence = Array.from({length: 10}, (_,i) => 'Cross' + i); g.idx = 0; g.words = [];
+  const upper = makeWord('Cross7', 7, 140), lower = makeWord('Cross1', 1, 128);
+  upper.col = lower.col = 0; upper.row = 2; lower.row = 3;
+  upper.y = 575; lower.y = 616; g.words.push(upper, lower); TRACE.events.length = 0;
+  beginWordRecoil(lower, safeWingY(lower,performance.now()), performance.now(), recoilRailX(lower), false);
+  globalThis.recoilOverlapFrames = 0;
+  for (let ms=0; ms<=RECOIL_MS; ms+=13){
+    for (const w of g.words) w.recoilAt = performance.now() - ms;
+    const s=traceScene(), a=s.words[0], b=s.words[1];
+    const dx=Math.max(0,Math.min(a[1]+a[3],b[1]+b[3])-Math.max(a[1],b[1]));
+    const dy=Math.max(0,Math.min(a[2]+a[4],b[2]+b[4])-Math.max(a[2],b[2]));
+    if (dx*dy>0) recoilOverlapFrames++;
+  }
+`);
+assert.strictEqual(run('recoilOverlapFrames'), 0,
+  'a same-column wing rebound must use its side rail instead of crossing through another word');
+run(`
+  g.sentence = Array.from({length: 9},(_,i)=>'Sim'+i); g.idx=0; g.words=[];
+  for(let i=0;i<9;i++){
+    const w=makeWord('Sim'+i,i,0); w.col=i%3; w.row=Math.floor(i/3); w.x=formationLaneX(w);
+    w.y=260+w.row*70; g.words.push(w);
+  }
+  for(const i of [3,4,5]) g.words[i].y=H-64-g.words[i].h+1;
+  g.speed=0; g.wordT=0; g.freeze=0; TRACE.events.length=0; update(.016);
+  globalThis.simultaneousWingOverlapFrames=0;
+  const started=performance.now(), delays=Object.fromEntries([3,4,5].map(i=>[i,g.words[i].recoilAt-started]));
+  for(let ms=0;ms<=RECOIL_MS*3+120;ms+=13){
+    const frameNow=performance.now();
+    for(const i of [3,4,5]) g.words[i].recoilAt=frameNow+delays[i]-ms;
+    const ws=traceScene().words;
+    for(let i=0;i<ws.length;i++)for(let j=i+1;j<ws.length;j++){
+      const a=ws[i],b=ws[j],dx=Math.max(0,Math.min(a[1]+a[3],b[1]+b[3])-Math.max(a[1],b[1]));
+      const dy=Math.max(0,Math.min(a[2]+a[4],b[2]+b[4])-Math.max(a[2],b[2]));
+      if(dx*dy>0) simultaneousWingOverlapFrames++;
+    }
+  }
+`);
+assert.strictEqual(run('simultaneousWingOverlapFrames'),0,
+  'simultaneous wing rebounds must reserve distinct side rails and return heights');
 run(`
   g.sentence = ['Rebound']; g.idx = 0; g.words = []; g.fireQueues = []; g.freeze = 0;
   const reboundTarget = makeWord('Rebound', 0, 100);
@@ -242,6 +288,53 @@ assert.strictEqual(run(`regroupedScene.words.filter(w => !(w[9]&1)).every(w => w
   'after a shield rebound every live word must finish fully readable on screen');
 assert.strictEqual(run(`new Set(regroupedScene.words.map(w => w[2])).size`), 3,
   'the rebound must restore the original three-row formation instead of stacking words together');
+
+run(`
+  g.sentence = Array.from({length: 9}, (_,i) => 'Visible' + i); g.idx = 0;
+  g.words = g.sentence.map((text,i) => makeWord(text, i, 30 + (i%3)*240));
+  g.words[0].y = 500; g.lives = 3; g.shields = 0; g.viewportPaused = false;
+  g.messageBeforePause = null; TRACE.events.length = 0;
+  globalThis.resizeConsumedBefore = g.words[0].consumed;
+`);
+viewport.h = 328;
+run(`resize(); handleKey('V'); update(5); globalThis.resizePausedState = {
+  paused:g.viewportPaused, lives:g.lives, consumed:g.words[0].consumed,
+  warning:!$('resize-warning').classList.contains('hidden')
+};`);
+assert.deepStrictEqual(Array.from(run(`Object.values(resizePausedState)`)), [true, 3, 0, true],
+  'shrinking below the safe height must pause time, collisions, and input instead of killing the player');
+assert.strictEqual(run(`TRACE.events.some(e => e.type === 'viewport_pause' && e.h === 328)`), true,
+  'the trace must record the exact viewport pause boundary');
+assert.strictEqual(run(`TRACE.events.find(e => e.type === 'viewport').after.vp`), 1,
+  'the resize event must retain complete before/after scenes including paused state');
+viewport.h = 600;
+run(`
+  resize();
+  globalThis.resizeRestoredImmediateScene = traceScene();
+  for (const w of g.words) w.recoilAt -= RECOIL_MS;
+  globalThis.resizeRestoredScene = traceScene();
+  const countOverlap = scene => {
+    const ws = scene.words;
+    let count = 0;
+    for (let i=0;i<ws.length;i++) for(let j=i+1;j<ws.length;j++){
+      const a=ws[i], b=ws[j];
+      const dx=Math.max(0,Math.min(a[1]+a[3],b[1]+b[3])-Math.max(a[1],b[1]));
+      const dy=Math.max(0,Math.min(a[2]+a[4],b[2]+b[4])-Math.max(a[2],b[2]));
+      if (dx*dy>0) count++;
+    }
+    return count;
+  };
+  globalThis.resizeImmediateOverlapCount=countOverlap(resizeRestoredImmediateScene);
+  globalThis.resizeOverlapCount=countOverlap(resizeRestoredScene);
+`);
+assert.deepStrictEqual(Array.from(run(`[
+  g.viewportPaused, $('resize-warning').classList.contains('hidden'),
+  resizeRestoredImmediateScene.words.every(w => w[11] === 100),
+  resizeImmediateOverlapCount, resizeRestoredScene.words.every(w => w[11] === 100), resizeOverlapCount,
+  TRACE.events.some(e => e.type === 'viewport_resume'),
+  TRACE.events.some(e => e.type === 'formation_recoil' && e.reason === 'viewport_resume')
+]`)), [false, true, true, 0, true, 0, true, true],
+  'restoring the window must resume immediately in a fully visible, non-overlapping formation');
 
 run(`
   g.sentence = Array.from({length: 12}, (_,i) => 'Word' + i); g.idx = 0; g.words = [];
