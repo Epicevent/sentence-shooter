@@ -85,15 +85,14 @@
     <h1>SENTENCE SHOOTER</h1>
     <div class="sub">
       the whole sentence descends in formation. destroy it <b>IN ORDER</b>.<br>
-      <b>TYPE MODE</b> (keyboard): type the next word — every letter fires a missile.<br>
-      <b>TAP MODE</b> (touch): tap the next word — lock on, mash for more missiles.<br>
+      <b>keyboard and tap both work, anytime</b>: type the next word letter by letter, or tap it.<br>
       combo upgrades your launcher MK-I → MK-IV. wrong input = combo reset.<br>
       items — <b>TAB ⚡</b> completes the word you started, like your shell (earn: PERFECT sentence).<br>
-      <b>/ 💡</b> reveals the next letter (earn: combo 12). <b>🛡</b> absorbs one breakthrough (earn: speed-clear).<br>
+      <b>/ 💡</b> reveals the answer (earn: combo 12). <b>🛡</b> absorbs one breakthrough (earn: speed-clear).<br>
       full stock converts to points. hesitate and the formation accelerates; mistakes make it lunge.<br>
       let the next word reach your line and you lose a ship — and your launcher.
     </div>
-    <div class="tap">PRESS ANY KEY TO TYPE · TAP TO PLAY BY TOUCH</div>
+    <div class="tap">TAP OR PRESS ANY KEY TO LAUNCH</div>
     <div class="sub" id="start-best"></div>
   </div>
   <div id="over" class="overlay hidden">
@@ -294,7 +293,7 @@ function nextSentence(){
     const x = Math.max(margin, Math.min(W - margin - bw, margin + col*laneW + (laneW-bw)/2 + (Math.random()*20-10)));
     const rows = Math.ceil(g.sentence.length/perRow);
     const y = -(rows - row) * 52 - 20 + Math.random()*8;
-    const hp = g.mode === 'type' ? sigLen(text) : 3;
+    const hp = sigLen(text);   // unified: letters are HP in both input styles
     g.words.push({ text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0 });
   });
   updateHud();
@@ -309,7 +308,7 @@ function updateHud(){
   $('h-shields').innerHTML = '🛡<b>' + g.shields + '</b>';
   $('h-lives').textContent = '▲'.repeat(Math.max(0, g.lives)) || '—';
   $('h-best').textContent = g.best;
-  $('built').textContent = '> ' + g.sentence.slice(0, g.idx).join(' ');
+  $('built').textContent = '> ' + g.sentence.slice(0, g.idx).join(' ') + '   [' + g.idx + '/' + g.sentence.length + ']';
 }
 
 function banner(text, gold){
@@ -334,21 +333,21 @@ function popText(x, y, text, color){
 
 // tap-to-lock, ZType style: the ship fires a stream of homing missiles at the locked word
 function tapAt(x, y){
-  if (!g || g.over || g.mode !== 'tap') return;
+  if (!g || g.over) return;   // keyboard and pointer both live, always
   const w = g.words.find(w => x >= w.x - 8 && x <= w.x + w.w + 8 && y >= w.y - 8 && y <= w.y + w.h + 8);
   if (!w) return;
   if (w.order === g.idx){
     if (g.lock !== w){
       g.lock = w;
-      g.volley = volleySize(); g.volleyT = 0;
+      g.volley = Math.max(1, w.hp); g.volleyT = 0;   // one tap = a full kill volley
       tone(600, 900, .06, 'square', .05);   // lock blip
     } else {
-      g.volley = Math.min(10, g.volley + 2);   // mash = more dakka
+      g.volley = Math.min(14, g.volley + 2);   // mash = more dakka
     }
   } else {
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     w.err = 0.35;
-    for (const ww of g.words) ww.y += 26;   // mistakes make the formation lunge
+    for (const ww of g.words) ww.y += (g.solved < 3 ? 12 : 26);   // gentler lunge while warming up
     tEv('miss', { w: w.text, want: (g.words.find(x=>x.order===g.idx)||{}).text });
     sfx.plink(); shake();
     $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> not "' + esc(w.text) + '" — combo reset';
@@ -377,7 +376,7 @@ function spawnMissiles(dt){
 
 // TYPE MODE: every correct keystroke is a missile; escorts join at higher marks
 function handleKey(key){
-  if (!g || g.over || g.mode !== 'type' || key.length !== 1) return;
+  if (!g || g.over || key.length !== 1) return;
   const t = g.words.find(w => w.order === g.idx);
   if (!t || t.consumed >= t.text.length) return;
   const expected = t.text[t.consumed];
@@ -395,7 +394,7 @@ function handleKey(key){
   } else if (SIG.test(key)){
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     t.err = 0.35;
-    for (const w of g.words) w.y += 26;   // mistakes make the formation lunge
+    for (const w of g.words) w.y += (g.solved < 3 ? 12 : 26);   // gentler lunge while warming up
     tEv('miss', { k: key, want: expected, w: t.text });
     sfx.plink(); shake();
     $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> wrong key — combo reset';
@@ -408,24 +407,22 @@ function handleTab(){
   if (!g || g.over) return;
   const t = g.words.find(w => w.order === g.idx);
   if (!t) return;
-  const started = g.mode === 'type' ? t.consumed > 0 : (g.lock === t && t.hp < t.maxhp);
+  const started = t.consumed > 0 || t.hp < t.maxhp;
   if (!started){
     sfx.plink();
-    $('msg').textContent = g.mode === 'type'
-      ? '# tab completes what you started — type at least one letter first'
-      : '# tab finishes a target you already damaged — hit it first';
+    $('msg').textContent = '# tab completes what you started — type or hit at least once first';
     return;
   }
-  if (g.mode === 'type' && t.consumed >= t.text.length) return;
+  if (t.consumed >= t.text.length && t.hp <= 0) return;
   if (g.tabs <= 0){
     sfx.plink();
     $('msg').textContent = '# no ⚡ left — only PERFECT sentences refill it';
     return;
   }
   g.tabs--; g.perfect = false; t.auto = true; g.lock = t;
-  tEv('tab', { w: t.text, at: g.mode === 'type' ? t.consumed : t.hp });
+  tEv('tab', { w: t.text, at: t.consumed || (t.maxhp - t.hp) });
   tone(300, 900, .12, 'square', .06);
-  if (g.mode === 'type'){
+  if (t.consumed > 0){
     while (t.consumed < t.text.length){
       const ch = t.text[t.consumed]; t.consumed++;
       launchMissile(t, 1, SIG.test(ch) ? ch : undefined);
@@ -648,7 +645,7 @@ function draw(){
     ctx.fillRect(w.x, w.y, w.w, w.h);
     ctx.strokeRect(w.x, w.y, w.w, w.h);
     const baseCol = w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
-    if (g.mode === 'type' && isNext && w.consumed > 0){
+    if (isNext && w.consumed > 0){
       const pre = w.text.slice(0, w.consumed), rest = w.text.slice(w.consumed);
       const preW = ctx.measureText(pre).width;
       ctx.fillStyle = '#d7ba7d';
