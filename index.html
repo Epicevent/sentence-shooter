@@ -74,7 +74,6 @@
   <span>score <b id="h-score">0</b></span>
   <span>combo x<b id="h-combo">0</b> · <span id="h-weapon">MK-I</span></span>
   <span id="h-tabs" style="cursor:pointer">⚡<b>2</b></span>
-  <span id="h-hints" style="cursor:pointer">💡<b>1</b></span>
   <span id="h-shields">🛡<b>1</b></span>
   <span id="h-lives">▲▲▲</span>
   <span>best <b id="h-best">0</b></span>
@@ -87,8 +86,8 @@
       the whole sentence descends in formation. destroy it <b>IN ORDER</b>.<br>
       <b>keyboard and tap both work, anytime</b>: type the next word letter by letter, or tap it.<br>
       combo upgrades your launcher MK-I → MK-IV. wrong input = combo reset.<br>
-      items — <b>TAB ⚡</b> completes the word you started, like your shell (earn: PERFECT sentence).<br>
-      <b>/ 💡</b> reveals the answer (earn: combo 12). <b>🛡</b> absorbs one breakthrough (earn: speed-clear).<br>
+      items — <b>TAB ⚡</b> completes the word you started, like your shell (earn: PERFECT sentence, or a 12-combo).<br>
+      <b>🛡</b> auto-absorbs one breakthrough (earn: clear a sentence fast). long words pay more.<br>
       full stock converts to points. hesitate and the formation accelerates; mistakes make it lunge.<br>
       let the next word reach your line and you lose a ship — and your launcher.
     </div>
@@ -241,7 +240,7 @@ function startGame(mode){
     best: +(localStorage.getItem('shooter2_best') || 0),
     ship: { x: W/2 }, missiles: [], words: [], parts: [], stars: [],
     lock: null, volley: 0, volleyT: 0, freeze: 0,
-    tabs: 2, hints: 1, shields: 1, perfect: true, nextLife: 10000,
+    tabs: 2, shields: 1, perfect: true, nextLife: 10000,
     wordT: 0, beatT: 0,
     idx: 0, sentence: null, recent: [],
     speed: 24, over: false, lastT: performance.now(), t0: 0,
@@ -304,7 +303,6 @@ function updateHud(){
   $('h-combo').textContent = g.combo;
   $('h-weapon').textContent = WEAPONS[weaponLv()-1];
   $('h-tabs').innerHTML = '⚡<b>' + g.tabs + '</b>';
-  $('h-hints').innerHTML = '💡<b>' + g.hints + '</b>';
   $('h-shields').innerHTML = '🛡<b>' + g.shields + '</b>';
   $('h-lives').textContent = '▲'.repeat(Math.max(0, g.lives)) || '—';
   $('h-best').textContent = g.best;
@@ -449,13 +447,15 @@ function killWord(word){
   g.kills++; g.idx++; g.wordT = 0;
   if (!word.auto){
     g.combo++;
-    if (g.combo === 12){        // streak mastery pays out in hints
-      if (g.hints < 3){ g.hints++; banner('+1 💡', true); sfx.up(); }
+    if (g.combo === 12){        // streak mastery feeds the tab stock (his intuition, adopted)
+      if (g.tabs < 4){ g.tabs++; banner('+1 ⚡ — COMBO 12', true); sfx.up(); }
       else g.score += 300;
     }
   }
   const lvBefore = WEAPONS[weaponLv()-1];
-  const pts = Math.round((word.auto ? 50 : 100) * (1 + Math.min(12, g.combo)*0.1));
+  // long words are the fun AND the danger (trace-verified: all deaths were long words) — pay accordingly
+  const base = 60 + 9 * word.maxhp;
+  const pts = Math.round((word.auto ? base/2 : base) * (1 + Math.min(12, g.combo)*0.1));
   g.score += pts;
   tEv('kill', { w: word.text, auto: !!word.auto, c: g.combo, pts });
   checkExtraLife();
@@ -479,12 +479,12 @@ function sentenceClear(){
   sfx.clear();
   let earned = '';
   if (g.perfect){
-    banner('PERFECT', true);
-    if (g.tabs < 4){ g.tabs++; earned = '  <span style="color:var(--gold)">+1 ⚡</span>'; sfx.up(); }
+    banner('PERFECT +1⚡', true);
+    if (g.tabs < 4){ g.tabs++; earned = '  <span style="color:var(--gold)">+1 ⚡ (perfect)</span>'; sfx.up(); }
     else { g.score += 500; earned = '  <span style="color:var(--gold)">⚡ FULL +500</span>'; }  // OpenTyrian consolation-prize rule
   } else banner('CLEAR');
   if (secs <= Math.ceil(g.sentence.length * 1.5)){   // speed mastery pays out in shields
-    if (g.shields < 2){ g.shields++; earned += '  <span style="color:var(--gold)">+1 🛡</span>'; }
+    if (g.shields < 2){ g.shields++; earned += '  <span style="color:var(--gold)">+1 🛡 (fast clear)</span>'; }
     else g.score += 300;
   }
   checkExtraLife();
@@ -513,24 +513,7 @@ function loseLife(word){
   updateHud();
 }
 
-// 💡 = the paid version of "tell me the answer": reveals, never fires
-function handleHint(){
-  if (!g || g.over) return;
-  const t = g.words.find(w => w.order === g.idx);
-  if (!t) return;
-  if (g.hints <= 0){ sfx.plink(); $('msg').textContent = '# no 💡 — build a 12-combo to earn one'; return; }
-  g.hints--; g.perfect = false;
-  tEv('hint', { w: t.text });
-  tone(500, 1200, .1, 'sine', .07);
-  if (g.mode === 'type'){
-    const next = t.text[t.consumed] || '';
-    $('msg').innerHTML = '💡 next letter: <span style="color:var(--gold)">' + esc(next) + '</span>  (word: <span style="color:var(--gold)">' + esc(t.text) + '</span>)';
-  } else {
-    t.flash = .8;
-    $('msg').innerHTML = '💡 the next word is <span style="color:var(--gold)">' + esc(t.text) + '</span>';
-  }
-  updateHud();
-}
+// (the 💡 reveal item was removed — a skill that tells you the answer betrays the drill)
 
 function gameOver(){
   g.over = true;
@@ -623,6 +606,19 @@ function draw(){
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#182818';
   for (const s of g.stars) ctx.fillRect(s.x, s.y, 2, 2);
+  // the sentence you are building lives INSIDE the sky — no looking away from the fight
+  {
+    let lineTxt = '> ' + g.sentence.slice(0, g.idx).join(' ') + ' ▁';
+    const tag = '  [' + g.idx + '/' + g.sentence.length + ']';
+    ctx.font = '14px "Cascadia Mono", Consolas, monospace';
+    let clipped = false;
+    while (lineTxt.length > 4 && ctx.measureText(lineTxt + tag).width > W - 24){ lineTxt = lineTxt.slice(2); clipped = true; }
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(174,240,174,.9)';
+    ctx.fillText((clipped ? '…' : '') + lineTxt + tag, 10, 8);
+    ctx.textBaseline = 'middle';
+    ctx.font = '15px "Cascadia Mono", Consolas, monospace';
+  }
   ctx.strokeStyle = 'rgba(209,105,105,.25)'; ctx.setLineDash([6,6]);
   ctx.beginPath(); ctx.moveTo(0, H-64); ctx.lineTo(W, H-64); ctx.stroke(); ctx.setLineDash([]);
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
@@ -722,10 +718,8 @@ cv.addEventListener('pointerdown', e => {
 $('start').addEventListener('pointerdown', e => { e.preventDefault(); begin('tap'); });
 $('over').addEventListener('pointerdown', e => { e.preventDefault(); begin(lastMode); });
 $('h-tabs').addEventListener('pointerdown', e => { e.preventDefault(); handleTab(); });
-$('h-hints').addEventListener('pointerdown', e => { e.preventDefault(); handleHint(); });
 window.addEventListener('keydown', e => {
   if (e.key === 'Tab'){ e.preventDefault(); handleTab(); return; }
-  if (e.key === '/' || e.key === '?'){ e.preventDefault(); handleHint(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('start').classList.contains('hidden')){
     if (e.key.length === 1){ e.preventDefault(); begin('type'); }
