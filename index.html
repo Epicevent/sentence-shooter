@@ -207,7 +207,7 @@ function tEv(type, data){
   TRACE.events.push(Object.assign({ t: Math.round(performance.now() - TRACE.meta.started), type }, data || {}));
 }
 function traceStart(mode){
-  TRACE.meta = { started: performance.now(), mode, ua: navigator.userAgent.slice(0, 60), w: W, h: H, at: Date.now() };
+  TRACE.meta = { started: performance.now(), mode, pipeline: 2, ua: navigator.userAgent.slice(0, 60), w: W, h: H, at: Date.now() };
   TRACE.samples.length = 0; TRACE.events.length = 0;
   traceOn = true; traceAcc = 0;
 }
@@ -216,17 +216,24 @@ function traceSample(eff){
   TRACE.samples.push({
     t: Math.round(performance.now() - TRACE.meta.started),
     d: nw ? Math.round((H - 64) - (nw.y + nw.h)) : null,   // threat distance: next word to deadline
-    n: g.words.length, sp: Math.round(eff), c: g.combo, l: g.lives, m: g.missiles.length,
+    n: g.words.filter(w => !w.resolved).length,
+    q: g.words.filter(w => w.resolved).length,              // presentation-only deaths still on screen
+    sp: Math.round(eff), c: g.combo, l: g.lives, m: g.missiles.length,
   });
 }
-function traceSend(){
+function traceSend(unloading){
   traceOn = false;
+  const body = JSON.stringify(TRACE);
   try {
     fetch('/api/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(TRACE) }).catch(()=>{});
+      body, keepalive: !!unloading }).catch(()=>{});
   } catch(e){}
 }
-window.addEventListener('pagehide', ()=>{ if (traceOn && TRACE.samples.length > 40) traceSend(); });
+window.addEventListener('pagehide', ()=>{
+  // Fast successful bursts can end before 40 samples. Preserve any session that contains
+  // a player/game event, and keep the request alive while navigation tears the page down.
+  if (traceOn && (TRACE.samples.length > 40 || TRACE.events.length > 0)) traceSend(true);
+});
 
 function weaponLv(){ return g.combo >= 10 ? 4 : g.combo >= 6 ? 3 : g.combo >= 3 ? 2 : 1; }
 function volleySize(){ return 2 + weaponLv(); }          // 3 / 4 / 5 / 6 missiles
@@ -238,8 +245,8 @@ function startGame(mode){
     mode: mode || 'tap',
     score: 0, combo: 0, lives: 3, solved: 0, kills: 0, plinks: 0,
     best: +(localStorage.getItem('shooter2_best') || 0),
-    ship: { x: W/2 }, missiles: [], words: [], parts: [], stars: [],
-    lock: null, volley: 0, volleyT: 0, freeze: 0,
+    ship: { x: W/2 }, missiles: [], fireQueues: [], words: [], parts: [], stars: [],
+    lock: null, freeze: 0,
     tabs: 2, shields: 1, perfect: true, nextLife: 10000,
     wordT: 0, beatT: 0,
     idx: 0, sentence: null, recent: [],
@@ -251,7 +258,7 @@ function startGame(mode){
   $('over').classList.add('hidden');
   $('msg').textContent = g.mode === 'type'
     ? '# TYPE the word that comes NEXT — every letter is a missile'
-    : '# TAP the word that comes NEXT — mash to fire more missiles';
+    : '# TAP the word that comes NEXT — committed volleys free the next target immediately';
   traceStart(g.mode);
   nextSentence();
   requestAnimationFrame(frame);
@@ -272,6 +279,9 @@ function pickSentence(){
 }
 
 function nextSentence(){
+  // Do not let a fast clear erase the tail of its own hit animation. Any volley that has
+  // not physically arrived by the transition deadline lands as a final cleanup blast.
+  for (const w of g.words.slice()) if (w.resolved && !w.settled) settleWord(w, true);
   const ans = pickSentence();
   g.recent.push(ans); if (g.recent.length > 12) g.recent.shift();
   g.sentence = ans.split(' ');
@@ -279,7 +289,7 @@ function nextSentence(){
   // ZType-measured curve: enemies are slow (~29px/s) but growth is geometric (+5%/wave)
   g.speed = Math.min(95, 34 * Math.pow(1.05, g.solved));
   g.wordT = 0;
-  g.words = []; g.missiles = []; g.lock = null; g.volley = 0;
+  g.words = []; g.missiles = []; g.fireQueues = []; g.lock = null;
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   const perRow = 3, margin = 8;
   const slots = g.sentence.map((w, i) => i);
@@ -293,7 +303,10 @@ function nextSentence(){
     const rows = Math.ceil(g.sentence.length/perRow);
     const y = -(rows - row) * 52 - 20 + Math.random()*8;
     const hp = sigLen(text);   // unified: letters are HP in both input styles
-    g.words.push({ text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0 });
+    g.words.push({
+      text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0,
+      committed: 0, resolved: false, resolvedAt: 0, settled: false, pts: 0,
+    });
   });
   updateHud();
 }
@@ -332,16 +345,13 @@ function popText(x, y, text, color){
 // tap-to-lock, ZType style: the ship fires a stream of homing missiles at the locked word
 function tapAt(x, y){
   if (!g || g.over) return;   // keyboard and pointer both live, always
-  const w = g.words.find(w => x >= w.x - 8 && x <= w.x + w.w + 8 && y >= w.y - 8 && y <= w.y + w.h + 8);
+  // A resolved word remains visible for its impacts, but is no longer an input target.
+  const w = g.words.find(w => !w.resolved && x >= w.x - 8 && x <= w.x + w.w + 8 && y >= w.y - 8 && y <= w.y + w.h + 8);
   if (!w) return;
   if (w.order === g.idx){
-    if (g.lock !== w){
-      g.lock = w;
-      g.volley = Math.max(1, w.hp); g.volleyT = 0;   // one tap = a full kill volley
-      tone(600, 900, .06, 'square', .05);   // lock blip
-    } else {
-      g.volley = Math.min(14, g.volley + 2);   // mash = more dakka
-    }
+    g.lock = w;
+    queueDamageVolley(w, w.maxhp - w.committed);   // one tap commits a full kill; visuals follow independently
+    tone(600, 900, .06, 'square', .05);            // lock blip
   } else {
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     w.err = 0.35;
@@ -362,14 +372,36 @@ function launchMissile(target, dmg, letter){
   });
 }
 
+// Gameplay is committed when a deterministic shot is launched/scheduled. The missile and
+// explosion are presentation: they may finish later without holding the next input hostage.
+function commitMissile(target, letter){
+  if (!target || target.resolved) return;
+  target.committed++;
+  launchMissile(target, 1, letter);
+  if (target.committed >= target.maxhp) resolveWord(target);
+}
+
+function queueDamageVolley(target, count){
+  count = Math.max(0, count | 0);
+  if (!count || !target || target.resolved) return;
+  const gap = volleyGap();
+  target.committed += count;                         // deterministic reservation: this damage cannot be canceled
+  g.fireQueues.push({ target, remaining: count, t: 0, gap });
+  if (target.committed >= target.maxhp) resolveWord(target);
+}
+
 function spawnMissiles(dt){
-  if (!g.lock || g.volley <= 0) return;
-  g.volleyT -= dt;
-  if (g.volleyT > 0) return;
-  g.volleyT = volleyGap();
-  g.volley--;
-  sfx.pew();
-  launchMissile(g.lock, 1);
+  for (const q of g.fireQueues){
+    if (!g.words.includes(q.target)){ q.remaining = 0; continue; }
+    q.t -= dt;
+    while (q.remaining > 0 && q.t <= 0){
+      q.remaining--;
+      q.t += q.gap;
+      sfx.pew();
+      launchMissile(q.target, 1);
+    }
+  }
+  g.fireQueues = g.fireQueues.filter(q => q.remaining > 0);
 }
 
 // TYPE MODE: every correct keystroke is a missile; escorts join at higher marks
@@ -382,12 +414,12 @@ function handleKey(key){
     g.lock = t;
     const letter = expected;
     t.consumed++;
+    sfx.pew();
+    commitMissile(t, letter);
     while (t.consumed < t.text.length && !SIG.test(t.text[t.consumed])){
       t.consumed++;                          // punctuation rides along as a free missile
-      launchMissile(t, 1);
+      launchMissile(t, 0);
     }
-    sfx.pew();
-    launchMissile(t, 1, letter);
     for (let i = 1; i < weaponLv(); i++) launchMissile(t, 0);   // escort missiles: pure spectacle
   } else if (SIG.test(key)){
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
@@ -405,13 +437,12 @@ function handleTab(){
   if (!g || g.over) return;
   const t = g.words.find(w => w.order === g.idx);
   if (!t) return;
-  const started = t.consumed > 0 || t.hp < t.maxhp;
+  const started = t.consumed > 0 || t.committed > 0 || t.hp < t.maxhp;
   if (!started){
     sfx.plink();
     $('msg').textContent = '# tab completes what you started — type or hit at least once first';
     return;
   }
-  if (t.consumed >= t.text.length && t.hp <= 0) return;
   if (g.tabs <= 0){
     sfx.plink();
     $('msg').textContent = '# no ⚡ left — only PERFECT sentences refill it';
@@ -423,10 +454,12 @@ function handleTab(){
   if (t.consumed > 0){
     while (t.consumed < t.text.length){
       const ch = t.text[t.consumed]; t.consumed++;
-      launchMissile(t, 1, SIG.test(ch) ? ch : undefined);
+      if (SIG.test(ch)) commitMissile(t, ch);
+      else launchMissile(t, 0);
     }
   } else {
-    for (let i = 0; i < t.hp; i++) launchMissile(t, 1);
+    const left = t.maxhp - t.committed;
+    for (let i = 0; i < left; i++) commitMissile(t);
   }
   updateHud();
 }
@@ -441,9 +474,11 @@ function checkExtraLife(){
   }
 }
 
-function killWord(word){
-  g.words = g.words.filter(w => w !== word);
-  if (g.lock === word){ g.lock = null; g.volley = 0; }
+function resolveWord(word){
+  if (!word || word.resolved || word.order !== g.idx) return;
+  word.resolved = true;
+  word.resolvedAt = performance.now();
+  if (g.lock === word) g.lock = null;
   g.kills++; g.idx++; g.wordT = 0;
   if (!word.auto){
     g.combo++;
@@ -456,18 +491,28 @@ function killWord(word){
   // long words are the fun AND the danger (trace-verified: all deaths were long words) — pay accordingly
   const base = 60 + 9 * word.maxhp;
   const pts = Math.round((word.auto ? base/2 : base) * (1 + Math.min(12, g.combo)*0.1));
+  word.pts = pts;
   g.score += pts;
   tEv('kill', { w: word.text, auto: !!word.auto, c: g.combo, pts });
   checkExtraLife();
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
+  const lvAfter = WEAPONS[weaponLv()-1];
+  if (lvAfter !== lvBefore){ banner('WEAPON UP — ' + lvAfter, true); sfx.up(); buzz([20,40,20]); }
+  if (g.idx === g.sentence.length) sentenceClear();
+  updateHud();
+}
+
+function settleWord(word, forced){
+  if (!word || word.settled) return;
+  word.settled = true;
+  g.words = g.words.filter(w => w !== word);
+  if (g.lock === word) g.lock = null;
+  const lag = Math.max(0, Math.round(performance.now() - word.resolvedAt));
+  tEv('settle', { w: word.text, lag, forced: !!forced });
   sfx.boom(); buzz(25); shake();
   spawnParts(word.x + word.w/2, word.y + word.h/2, 14, '#d7ba7d', 160);
   spawnParts(word.x + word.w/2, word.y + word.h/2, 8, '#aef0ae', 90);
-  popText(word.x + word.w/2, word.y, '+' + pts, '#d7ba7d');
-  const lvAfter = WEAPONS[weaponLv()-1];
-  if (lvAfter !== lvBefore){ banner('WEAPON UP — ' + lvAfter, true); sfx.up(); buzz([20,40,20]); }
-  if (!g.words.length) sentenceClear();
-  updateHud();
+  popText(word.x + word.w/2, word.y, '+' + word.pts, '#d7ba7d');
 }
 
 function sentenceClear(){
@@ -494,7 +539,7 @@ function sentenceClear(){
 }
 
 function loseLife(word){
-  g.perfect = false; g.lock = null; g.volley = 0; g.wordT = 0;
+  g.perfect = false; g.lock = null; g.wordT = 0;
   if (g.shields > 0){   // shield absorbs the breakthrough: ship, gun and combo survive
     g.shields--;
     tEv('shield_absorb', { w: word.text });
@@ -549,11 +594,12 @@ function update(dt){
   if (traceAcc >= 0.125){ traceAcc = 0; traceSample(eff); }
   const deadline = H - 64;
   let packTop = Infinity;
-  for (const w of g.words) packTop = Math.min(packTop, w.y);
+  for (const w of g.words) if (!w.resolved) packTop = Math.min(packTop, w.y);
   for (const w of g.words){
     w.y += eff * dt;
     if (w.flash > 0) w.flash -= dt;
     if (w.err > 0) w.err -= dt;
+    if (w.resolved) continue;                    // fatal damage is committed; this shell can no longer hurt the player
     if (w.y + w.h >= deadline){
       if (w.order === g.idx){ loseLife(w); return; }
       // ZType lesson: every ship on screen must have teeth. an armored word
@@ -585,9 +631,9 @@ function update(dt){
         g.parts.push({ x: m.x, y: t.y, vx: (Math.random()*2-1)*120, vy: -140, life: .7, t: 0, color: '#d7ba7d', text: m.letter });
       }
       if (m.dmg > 0){
-        t.hp -= m.dmg;
+        t.hp = Math.max(0, t.hp - m.dmg);
         tone(300, 80, .08, 'sawtooth', .05);
-        if (t.hp <= 0){ g.freeze = 0.05; killWord(t); }   // hit-stop: the kill lands harder
+        if (t.hp <= 0){ g.freeze = 0.05; settleWord(t); } // presentation settles later; hit-stop still makes it land
       }
     }
   }
@@ -633,15 +679,30 @@ function draw(){
     ctx.fillRect(0, H-220, W, 220);
   }
   for (const w of g.words){
-    const isNext = w.order === g.idx;
+    const isNext = !w.resolved && w.order === g.idx;
+    const doomed = w.resolved;
+    const sentenceLocked = g.idx === g.sentence.length;
+    const claimAge = doomed ? performance.now() - w.resolvedAt : 0;
+    // A committed target stays in the world for missile impacts, but should no longer read
+    // as something the player must type. Flash gold, then recede behind the live formation.
+    const claimAlpha = doomed ? (sentenceLocked ? 0.22 : Math.max(0.3, 0.72 - claimAge/900)) : 1;
     const dmg = w.maxhp - w.hp;
-    ctx.fillStyle = w.err > 0 ? '#2a1010' : w.flash > 0 ? '#1e321e' : '#0b110b';
-    ctx.strokeStyle = w.err > 0 ? '#d16969' : (isNext && danger) ? '#d16969' : dmg > 0 ? '#6fae6f' : '#2e4e2e';
-    ctx.lineWidth = dmg > 0 ? 2 : 1;
+    ctx.globalAlpha = claimAlpha;
+    ctx.fillStyle = doomed ? '#18130b' : w.err > 0 ? '#2a1010' : w.flash > 0 ? '#1e321e' : '#0b110b';
+    ctx.strokeStyle = doomed ? '#d7ba7d' : w.err > 0 ? '#d16969' : (isNext && danger) ? '#d16969' : dmg > 0 ? '#6fae6f' : '#2e4e2e';
+    ctx.lineWidth = doomed || dmg > 0 ? 2 : 1;
     ctx.fillRect(w.x, w.y, w.w, w.h);
     ctx.strokeRect(w.x, w.y, w.w, w.h);
-    const baseCol = w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
-    if (isNext && w.consumed > 0){
+    const baseCol = doomed ? '#d7ba7d' : w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
+    if (doomed && claimAge >= 120){
+      // The word itself is no longer an instruction. Leave a collapsing, crossed-out husk
+      // for homing impacts instead of an apparently actionable word target.
+      ctx.strokeStyle = 'rgba(215,186,125,.8)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w.x + 7, w.y + 6); ctx.lineTo(w.x + w.w - 7, w.y + w.h - 6);
+      ctx.moveTo(w.x + w.w - 7, w.y + 6); ctx.lineTo(w.x + 7, w.y + w.h - 6);
+      ctx.stroke();
+    } else if (isNext && w.consumed > 0){
       const pre = w.text.slice(0, w.consumed), rest = w.text.slice(w.consumed);
       const preW = ctx.measureText(pre).width;
       ctx.fillStyle = '#d7ba7d';
@@ -652,6 +713,12 @@ function draw(){
       ctx.fillStyle = baseCol;
       ctx.fillText(w.text, w.x + 11, w.y + w.h/2 + 1);
     }
+    if (doomed && claimAge < 120){
+      ctx.strokeStyle = 'rgba(215,186,125,.8)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w.x + 6, w.y + w.h/2); ctx.lineTo(w.x + w.w - 6, w.y + w.h/2);
+      ctx.stroke();
+    }
     if (dmg > 0){
       ctx.strokeStyle = 'rgba(174,240,174,.5)'; ctx.lineWidth = 1;
       ctx.beginPath();
@@ -659,6 +726,7 @@ function draw(){
       if (dmg > 1){ ctx.moveTo(w.x + w.w*0.7, w.y + w.h); ctx.lineTo(w.x + w.w*0.6, w.y + w.h*0.3); }
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
   }
   // homing missiles: oriented streaks with glow
   ctx.strokeStyle = '#aef0ae'; ctx.lineWidth = 2.5;

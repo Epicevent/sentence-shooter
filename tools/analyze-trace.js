@@ -16,15 +16,21 @@ for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))){
   const deaths = E.filter(e => e.type==='life_lost'||e.type==='shield_absorb').map(e => e.type[0]+':'+e.w);
   const over = E.find(e => e.type==='over') || {};
   const kills = E.filter(e=>e.type==='kill');
-  // per-kill spacing (action tempo)
+  const settles = E.filter(e=>e.type==='settle' && Number.isFinite(e.lag));
+  // Logical kills are input tempo; settle lag measures how long presentation trails the verdict.
   let kGaps = []; for (let i=1;i<kills.length;i++) kGaps.push((kills[i].t-kills[i-1].t)/1000);
   const avgKill = kGaps.length ? (kGaps.reduce((a,b)=>a+b,0)/kGaps.length).toFixed(1) : '-';
+  const settleLags = settles.map(e=>e.lag).sort((a,b)=>a-b);
+  const forcedSettles = settles.filter(e=>e.forced).length;
+  const avgSettle = settleLags.length ? Math.round(settleLags.reduce((a,b)=>a+b,0)/settleLags.length) : '-';
+  const p90Settle = settleLags.length ? settleLags[Math.floor((settleLags.length-1)*.9)] : '-';
   console.log('=== ' + f + ' ===');
   console.log('mode:', T.meta.mode, '| dur:', dur.toFixed(0)+'s', '| samples:', S.length, '| viewport:', T.meta.w+'x'+T.meta.h);
   console.log('events:', JSON.stringify(ev));
   console.log('threat d px: min', ds[0], '| p10', pct(.1), '| median', pct(.5), '| p90', pct(.9));
   console.log('tension: d<150px', (closeFrac*100).toFixed(1)+'% of time | d<60px', (veryClose*100).toFixed(1)+'%');
-  console.log('avg sec between kills:', avgKill, '| boredom gaps>5s:', JSON.stringify(gaps));
+  console.log('avg sec between logical kills:', avgKill, '| boredom gaps>5s:', JSON.stringify(gaps));
+  console.log('visual settle lag ms: avg', avgSettle, '| p90', p90Settle, '| transition flush', forcedSettles+'/'+settles.length);
   console.log('misses:', JSON.stringify(misses.slice(0,10)));
   console.log('deaths:', JSON.stringify(deaths));
   console.log('final:', JSON.stringify(over));
