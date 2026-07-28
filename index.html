@@ -201,6 +201,35 @@ function buzz(ms){ try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e
 const WEAPONS = ['MK-I', 'MK-II', 'MK-III', 'MK-IV'];
 let g = null;
 
+// ---------- play-trace recorder: whole sessions become bulk learning data ----------
+const TRACE = { meta: {}, samples: [], events: [] };
+let traceOn = false, traceAcc = 0;
+function tEv(type, data){
+  if (!traceOn) return;
+  TRACE.events.push(Object.assign({ t: Math.round(performance.now() - TRACE.meta.started), type }, data || {}));
+}
+function traceStart(mode){
+  TRACE.meta = { started: performance.now(), mode, ua: navigator.userAgent.slice(0, 60), w: W, h: H, at: Date.now() };
+  TRACE.samples.length = 0; TRACE.events.length = 0;
+  traceOn = true; traceAcc = 0;
+}
+function traceSample(eff){
+  const nw = g.words.find(w => w.order === g.idx);
+  TRACE.samples.push({
+    t: Math.round(performance.now() - TRACE.meta.started),
+    d: nw ? Math.round((H - 64) - (nw.y + nw.h)) : null,   // threat distance: next word to deadline
+    n: g.words.length, sp: Math.round(eff), c: g.combo, l: g.lives, m: g.missiles.length,
+  });
+}
+function traceSend(){
+  traceOn = false;
+  try {
+    fetch('/api/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(TRACE) }).catch(()=>{});
+  } catch(e){}
+}
+window.addEventListener('pagehide', ()=>{ if (traceOn && TRACE.samples.length > 40) traceSend(); });
+
 function weaponLv(){ return g.combo >= 10 ? 4 : g.combo >= 6 ? 3 : g.combo >= 3 ? 2 : 1; }
 function volleySize(){ return 2 + weaponLv(); }          // 3 / 4 / 5 / 6 missiles
 function volleyGap(){ return weaponLv() >= 4 ? 0.05 : 0.08; }
@@ -225,6 +254,7 @@ function startGame(mode){
   $('msg').textContent = g.mode === 'type'
     ? '# TYPE the word that comes NEXT — every letter is a missile'
     : '# TAP the word that comes NEXT — mash to fire more missiles';
+  traceStart(g.mode);
   nextSentence();
   requestAnimationFrame(frame);
 }
@@ -319,6 +349,7 @@ function tapAt(x, y){
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     w.err = 0.35;
     for (const ww of g.words) ww.y += 26;   // mistakes make the formation lunge
+    tEv('miss', { w: w.text, want: (g.words.find(x=>x.order===g.idx)||{}).text });
     sfx.plink(); shake();
     $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> not "' + esc(w.text) + '" — combo reset';
     updateHud();
@@ -365,6 +396,7 @@ function handleKey(key){
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     t.err = 0.35;
     for (const w of g.words) w.y += 26;   // mistakes make the formation lunge
+    tEv('miss', { k: key, want: expected, w: t.text });
     sfx.plink(); shake();
     $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> wrong key — combo reset';
     updateHud();
@@ -391,6 +423,7 @@ function handleTab(){
     return;
   }
   g.tabs--; g.perfect = false; t.auto = true; g.lock = t;
+  tEv('tab', { w: t.text, at: g.mode === 'type' ? t.consumed : t.hp });
   tone(300, 900, .12, 'square', .06);
   if (g.mode === 'type'){
     while (t.consumed < t.text.length){
@@ -427,6 +460,7 @@ function killWord(word){
   const lvBefore = WEAPONS[weaponLv()-1];
   const pts = Math.round((word.auto ? 50 : 100) * (1 + Math.min(12, g.combo)*0.1));
   g.score += pts;
+  tEv('kill', { w: word.text, auto: !!word.auto, c: g.combo, pts });
   checkExtraLife();
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
   sfx.boom(); buzz(25); shake();
@@ -457,6 +491,7 @@ function sentenceClear(){
     else g.score += 300;
   }
   checkExtraLife();
+  tEv('clear', { len: g.sentence.length, secs, perfect: g.perfect });
   $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(g.sentence.join(' ')) + '</span> +' + bonus + earned;
   setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 1000);
 }
@@ -465,6 +500,7 @@ function loseLife(word){
   g.perfect = false; g.lock = null; g.volley = 0; g.wordT = 0;
   if (g.shields > 0){   // shield absorbs the breakthrough: ship, gun and combo survive
     g.shields--;
+    tEv('shield_absorb', { w: word.text });
     banner('SHIELD', true); tone(220, 660, .18, 'square', .09); buzz(60);
     for (const w of g.words) w.y -= H * 0.55;
     $('msg').innerHTML = '<span style="color:var(--gold)">🛡 shield absorbed "' + esc(word.text) + '"</span>';
@@ -472,6 +508,7 @@ function loseLife(word){
   }
   sfx.hit(); buzz(120); shake();
   g.lives--; g.combo = 0;
+  tEv('life_lost', { w: word.text, left: g.lives });
   spawnParts(g.ship.x, H - 40, 20, '#d16969', 200);
   if (g.lives <= 0){ gameOver(); return; }
   $('msg').innerHTML = '<span style="color:var(--danger)">✦ "' + esc(word.text) + '" got through!</span> gun reset — ' + g.lives + ' ships left';
@@ -486,6 +523,7 @@ function handleHint(){
   if (!t) return;
   if (g.hints <= 0){ sfx.plink(); $('msg').textContent = '# no 💡 — build a 12-combo to earn one'; return; }
   g.hints--; g.perfect = false;
+  tEv('hint', { w: t.text });
   tone(500, 1200, .1, 'sine', .07);
   if (g.mode === 'type'){
     const next = t.text[t.consumed] || '';
@@ -501,6 +539,8 @@ function gameOver(){
   g.over = true;
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
   const acc = (g.kills + g.plinks) ? Math.round(100 * g.kills / (g.kills + g.plinks)) : 100;
+  tEv('over', { score: g.score, solved: g.solved, acc, kills: g.kills, plinks: g.plinks });
+  traceSend();
   $('over-stats').innerHTML =
     'score <b style="color:var(--gold)">' + g.score + '</b><br>' +
     'sentences cleared: ' + g.solved + '<br>' +
@@ -525,6 +565,8 @@ function update(dt){
   for (const s of g.stars){ s.y += s.v*dt; if (s.y > H){ s.y = -2; s.x = Math.random()*W; } }
   g.wordT += dt;
   const eff = g.speed + Math.min(44, g.wordT * 5);   // hesitation makes the formation hungrier
+  traceAcc += dt;
+  if (traceAcc >= 0.125){ traceAcc = 0; traceSample(eff); }
   const deadline = H - 64;
   let packTop = Infinity;
   for (const w of g.words) packTop = Math.min(packTop, w.y);
