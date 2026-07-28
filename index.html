@@ -81,13 +81,13 @@
   <div id="start" class="overlay">
     <h1>SENTENCE SHOOTER</h1>
     <div class="sub">
-      the whole sentence descends in formation.<br>
-      <b>tap the word that comes NEXT</b> — your ship locks on and fires homing missiles.<br>
-      <b>mash the target</b> to fire even more. wrong tap = combo reset.<br>
-      combo upgrades your launcher: MK-I → MK-IV (more missiles, faster).<br>
+      the whole sentence descends in formation. destroy it <b>IN ORDER</b>.<br>
+      <b>TYPE MODE</b> (keyboard): type the next word — every letter fires a missile.<br>
+      <b>TAP MODE</b> (touch): tap the next word — lock on, mash for more missiles.<br>
+      combo upgrades your launcher MK-I → MK-IV. wrong input = combo reset.<br>
       let the next word reach your line and you lose a ship — and your launcher.
     </div>
-    <div class="tap">TAP TO LAUNCH</div>
+    <div class="tap">PRESS ANY KEY TO TYPE · TAP TO PLAY BY TOUCH</div>
     <div class="sub" id="start-best"></div>
   </div>
   <div id="over" class="overlay hidden">
@@ -199,13 +199,14 @@ function weaponLv(){ return g.combo >= 10 ? 4 : g.combo >= 6 ? 3 : g.combo >= 3 
 function volleySize(){ return 2 + weaponLv(); }          // 3 / 4 / 5 / 6 missiles
 function volleyGap(){ return weaponLv() >= 4 ? 0.05 : 0.08; }
 
-function startGame(){
+function startGame(mode){
   resize();
   g = {
+    mode: mode || 'tap',
     score: 0, combo: 0, lives: 3, solved: 0, kills: 0, plinks: 0,
     best: +(localStorage.getItem('shooter2_best') || 0),
     ship: { x: W/2 }, missiles: [], words: [], parts: [], stars: [],
-    lock: null, volley: 0, volleyT: 0,
+    lock: null, volley: 0, volleyT: 0, freeze: 0,
     idx: 0, sentence: null, recent: [],
     speed: 24, over: false, lastT: performance.now(), t0: 0,
   };
@@ -213,10 +214,16 @@ function startGame(){
     g.stars.push({ x: Math.random()*W, y: Math.random()*H, v: 30 + Math.random()*70 });
   $('start').classList.add('hidden');
   $('over').classList.add('hidden');
-  $('msg').textContent = '# tap the word that comes NEXT — mash to fire more missiles';
+  $('msg').textContent = g.mode === 'type'
+    ? '# TYPE the word that comes NEXT — every letter is a missile'
+    : '# TAP the word that comes NEXT — mash to fire more missiles';
   nextSentence();
   requestAnimationFrame(frame);
 }
+
+// significant characters (typed); punctuation like commas/periods auto-fires
+const SIG = /[a-z0-9'-]/i;
+function sigLen(text){ let n = 0; for (const c of text) if (SIG.test(c)) n++; return n; }
 
 function pickSentence(){
   const lv = Math.min(3, 1 + Math.floor(g.solved / 4));
@@ -247,7 +254,8 @@ function nextSentence(){
     const x = Math.max(margin, Math.min(W - margin - bw, margin + col*laneW + (laneW-bw)/2 + (Math.random()*20-10)));
     const rows = Math.ceil(g.sentence.length/perRow);
     const y = -(rows - row) * 52 - 20 + Math.random()*8;
-    g.words.push({ text, order, x, y, w: bw, h: bh, hp: 3, maxhp: 3, flash: 0 });
+    const hp = g.mode === 'type' ? sigLen(text) : 3;
+    g.words.push({ text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0 });
   });
   updateHud();
 }
@@ -283,7 +291,7 @@ function popText(x, y, text, color){
 
 // tap-to-lock, ZType style: the ship fires a stream of homing missiles at the locked word
 function tapAt(x, y){
-  if (!g || g.over) return;
+  if (!g || g.over || g.mode !== 'tap') return;
   const w = g.words.find(w => x >= w.x - 8 && x <= w.x + w.w + 8 && y >= w.y - 8 && y <= w.y + w.h + 8);
   if (!w) return;
   if (w.order === g.idx){
@@ -303,6 +311,15 @@ function tapAt(x, y){
   }
 }
 
+function launchMissile(target, dmg, letter){
+  g.missiles.push({
+    x: g.ship.x + (Math.random()*14 - 7), y: H - 46,
+    vx: (Math.random()*2 - 1) * 260,          // flare out sideways...
+    vy: -220 - Math.random()*120,             // ...then curve into the target
+    target, dmg, letter,
+  });
+}
+
 function spawnMissiles(dt){
   if (!g.lock || g.volley <= 0) return;
   g.volleyT -= dt;
@@ -310,12 +327,33 @@ function spawnMissiles(dt){
   g.volleyT = volleyGap();
   g.volley--;
   sfx.pew();
-  g.missiles.push({
-    x: g.ship.x, y: H - 46,
-    vx: (Math.random()*2 - 1) * 260,          // flare out sideways...
-    vy: -220 - Math.random()*120,             // ...then curve into the target
-    target: g.lock,
-  });
+  launchMissile(g.lock, 1);
+}
+
+// TYPE MODE: every correct keystroke is a missile; escorts join at higher marks
+function handleKey(key){
+  if (!g || g.over || g.mode !== 'type' || key.length !== 1) return;
+  const t = g.words.find(w => w.order === g.idx);
+  if (!t || t.consumed >= t.text.length) return;
+  const expected = t.text[t.consumed];
+  if (expected.toLowerCase() === key.toLowerCase()){
+    g.lock = t;
+    const letter = expected;
+    t.consumed++;
+    while (t.consumed < t.text.length && !SIG.test(t.text[t.consumed])){
+      t.consumed++;                          // punctuation rides along as a free missile
+      launchMissile(t, 1);
+    }
+    sfx.pew();
+    launchMissile(t, 1, letter);
+    for (let i = 1; i < weaponLv(); i++) launchMissile(t, 0);   // escort missiles: pure spectacle
+  } else if (SIG.test(key)){
+    g.plinks++; g.combo = 0; g.score = Math.max(0, g.score - 5);
+    t.err = 0.35;
+    sfx.plink(); shake();
+    $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> "' + esc(t.text) + '" — next letter is "' + esc(expected) + '"';
+    updateHud();
+  }
 }
 
 function killWord(word){
@@ -381,6 +419,7 @@ function frame(now){
 }
 
 function update(dt){
+  if (g.freeze > 0){ g.freeze -= dt; return; }   // hit-stop
   for (const s of g.stars){ s.y += s.v*dt; if (s.y > H){ s.y = -2; s.x = Math.random()*W; } }
   const deadline = H - 64;
   let packTop = Infinity;
@@ -410,10 +449,16 @@ function update(dt){
     if (Math.random() < 0.6) g.parts.push({ x: m.x, y: m.y, vx: 0, vy: 30, life: .25, t: 0, color: '#5a7a5a' });
     if (m.x >= t.x && m.x <= t.x+t.w && m.y >= t.y && m.y <= t.y+t.h){
       m.dead = true;
-      t.hp--; t.flash = .12;
+      t.flash = .12;
       spawnParts(m.x, m.y, 4, '#aef0ae', 90);
-      tone(300, 80, .08, 'sawtooth', .05);
-      if (t.hp <= 0) killWord(t);
+      if (m.letter){    // the struck letter breaks off and tumbles away
+        g.parts.push({ x: m.x, y: t.y, vx: (Math.random()*2-1)*120, vy: -140, life: .7, t: 0, color: '#d7ba7d', text: m.letter });
+      }
+      if (m.dmg > 0){
+        t.hp -= m.dmg;
+        tone(300, 80, .08, 'sawtooth', .05);
+        if (t.hp <= 0){ g.freeze = 0.05; killWord(t); }   // hit-stop: the kill lands harder
+      }
     }
   }
   g.missiles = g.missiles.filter(m => !m.dead && m.y > -40 && m.x > -40 && m.x < W+40);
@@ -438,8 +483,18 @@ function draw(){
     ctx.lineWidth = dmg > 0 ? 2 : 1;
     ctx.fillRect(w.x, w.y, w.w, w.h);
     ctx.strokeRect(w.x, w.y, w.w, w.h);
-    ctx.fillStyle = w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
-    ctx.fillText(w.text, w.x + 11, w.y + w.h/2 + 1);
+    const baseCol = w.err > 0 ? '#f0b0b0' : (isNext && danger) ? '#f0b0b0' : '#cde5cd';
+    if (g.mode === 'type' && isNext && w.consumed > 0){
+      const pre = w.text.slice(0, w.consumed), rest = w.text.slice(w.consumed);
+      const preW = ctx.measureText(pre).width;
+      ctx.fillStyle = '#d7ba7d';
+      ctx.fillText(pre, w.x + 11, w.y + w.h/2 + 1);
+      ctx.fillStyle = baseCol;
+      ctx.fillText(rest, w.x + 11 + preW, w.y + w.h/2 + 1);
+    } else {
+      ctx.fillStyle = baseCol;
+      ctx.fillText(w.text, w.x + 11, w.y + w.h/2 + 1);
+    }
     if (dmg > 0){
       ctx.strokeStyle = 'rgba(174,240,174,.5)'; ctx.lineWidth = 1;
       ctx.beginPath();
@@ -495,14 +550,28 @@ function draw(){
   }
 }
 
-// ---------- input: tap = lock & fire ----------
+// ---------- input ----------
+let lastMode = 'tap';
+function begin(mode){ lastMode = mode; startGame(mode); }
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   const r = cv.getBoundingClientRect();
   tapAt(e.clientX - r.left, e.clientY - r.top);
 });
-$('start').addEventListener('pointerdown', e => { e.preventDefault(); startGame(); });
-$('over').addEventListener('pointerdown', e => { e.preventDefault(); startGame(); });
+$('start').addEventListener('pointerdown', e => { e.preventDefault(); begin('tap'); });
+$('over').addEventListener('pointerdown', e => { e.preventDefault(); begin(lastMode); });
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!$('start').classList.contains('hidden')){
+    if (e.key.length === 1){ e.preventDefault(); begin('type'); }
+    return;
+  }
+  if (!$('over').classList.contains('hidden')){
+    if (e.key.length === 1 || e.key === 'Enter'){ e.preventDefault(); begin(lastMode); }
+    return;
+  }
+  if (e.key.length === 1){ e.preventDefault(); handleKey(e.key); }
+});
 $('start-best').textContent = 'best: ' + (+(localStorage.getItem('shooter2_best') || 0));
 resize();
 </script>
