@@ -4,7 +4,7 @@
 1945/ZType식 슈팅게임으로 만든 것. **이 문서만 읽으면 맥락 없이 이어받을 수 있게 쓰였다.**
 
 ## 배포·저장소
-- 단일 파일: `index.html` (바닐라 JS + Canvas, 의존성 0, 외부 요청 0)
+- 게임 런타임은 단일 `index.html` (바닐라 JS + Canvas, 의존성 0, 외부 요청 0). `tools/`와 `fixtures/`는 다른 PC의 에이전트 개발 루프를 위한 저장소 내 도구다.
 - `main` push = GitHub Pages 자동 배포 → https://epicevent.github.io/sentence-shooter/ (~40초 소요)
 - 배포 확인법: `curl -s "https://epicevent.github.io/sentence-shooter/?v=$RANDOM" | grep "<이번 변경의 고유 문자열>"` 을 until 루프로
 - gh CLI 인증: Bash에서 `export GH_CONFIG_DIR="/c/Users/com/AppData/Roaming/GitHub CLI"` 선행 필요
@@ -52,13 +52,21 @@
   `settle.lag`는 실제 폭발까지 걸린 ms다. `miss_suppressed`는 220ms 오답 버스트 안에서 벌점 없이 흡수한 후속 키다.
   아이템 이벤트에는 획득 이유와 사용 후 재고가 남으며, `tab`에는 시작 글자 수와 사용 시점의 위협거리도 남는다.
   게임오버·pagehide 시 `POST /api/trace`.
-- 수집 서버: `C:\Users\com\Documents\toefl-writing\server.js` (포트 7777, `node server.js`).
-  `/game` 라우트가 이 리포의 index.html을 서빙하고, 트레이스는 `toefl-writing/traces/tr_*.json`에 쌓인다.
-  **github.io에서는 수집 안 됨**(정적) — 김록기에게 로컬/LAN(`http://172.30.1.31:7777/game`) 플레이를 안내.
-- 분석기: 이 리포 `tools/analyze-trace.js` (`node tools/analyze-trace.js`). 출력: 위협거리 분포(긴장 실측),
+- 수집 서버는 이 저장소의 `tools/dev-server.js`다. 다른 PC에서도 `npm run dev` 후 `http://127.0.0.1:7777/game`으로 플레이하면
+  저장소의 untracked `traces/tr_*.json`에 쌓인다. LAN은 `node tools/dev-server.js --host 0.0.0.0`.
+  **github.io에서는 수집 안 됨**(정적)이지만 `tools/`가 함께 커밋되어도 Pages 게임은 계속 동작한다.
+- 분석기: `npm run analyze`(최신 로컬 세션), `node tools/analyze-trace.js <파일 또는 --dir DIR>`. 사용자별 절대경로를 넣지 말 것. 출력: 위협거리 분포(긴장 실측),
   킬 템포, 지루 구간, 미스 상세, 사망 원인.
 - **밸런스 논쟁은 트레이스 숫자로.** "타격감 좋아졌다" 같은 판정 문장을 에이전트가 쓰지 말 것 —
   그 판정은 김록기의 것이다.
+
+## 다른 PC의 새 에이전트 인계 절차
+- 이 저장소 하나가 실행 계약이다. 외부 `toefl-writing` 체크아웃을 요구하지 말고 `README.md`의 `npm test` → `npm run dev` 순서로 시작한다.
+- 독립 플레이어는 실제 화면 픽셀만 보고 플레이한다. DOM·소스·네트워크·게임 전역·트레이스를 읽는 플레이는 사람형 가독성 검증이 아니다.
+- 주 개발 에이전트는 플레이어 보고가 아니라 새로 생긴 게임 소유 `traces/tr_*.json`의 전체 시간축을 직접 읽는다. 분석기 출력은 원본을 대체하지 않는다.
+- `fixtures/traces/resize-overlap-before.json`은 반드시 실패해야 하는 음성 대조군이고 `resize-recovery-after.json`은 통과해야 하는 양성 대조군이다.
+- 회귀검사 정식 진입점은 `npm test`. 로컬 저장 API, 입력/연출 판정, fixture 기하 분석을 모두 통과시킨 뒤 실제 브라우저 세션을 다시 만든다.
+- 브라우저/서브에이전트 기능은 실행 환경의 능력이다. 없으면 blocker로 명시하고, 헤드리스 코드 접근을 독립 플레이로 가장하지 말 것.
 
 ## 최신 실측 (2026-07-28, 세션 3개)
 - 정확도: 탭 33~43% vs 타이핑 65% — 타이핑이 어순 실수를 줄임
@@ -88,8 +96,8 @@
 - 미검증 가설: "함선이 위험하지 않다"(위협이 추상적 데드라인 선뿐) → 단어가 함선으로 다이브하는
   공격 패턴. 김록기 판정 대기 상태였음.
 - ZType에 레코더 주입해 그의 실제 ZType 플레이 분포와 직접 diff
-- 문장 풀 확장: 현재 50문장 하드코딩(SENTENCES 배열). 랩(`toefl-writing/problems/`)의
-  sentence_build 세트에서 가져오는 구조였다가 독립 파일로 복제된 상태.
+- 문장 풀 확장: 현재 50문장 하드코딩(SENTENCES 배열). 과거 별도 TOEFL 랩의 sentence_build 세트에서
+  가져오는 구조였다가 독립 파일로 복제된 상태이며, 휴대형 실행에 그 랩은 필요하지 않다.
 
 ## 김록기와 일하는 법 (이 프로젝트에서 실제로 관측된 것)
 - 피드백은 짧다("노잼", "에바", "긴장감 없어"). 원인 진단은 에이전트 몫. 진단을 그에게 되묻지 말 것.
@@ -107,5 +115,4 @@
   주의: 창이 화면에 없으면 canvas가 0×0이라 W/H를 수동 주입해야 한다.
 
 ## 관련 프로젝트
-- TOEFL 랩(출제·채점): `C:\Users\com\Documents\toefl-writing\` — 그 쪽 계약은 그 폴더의 CLAUDE.md 참조.
-  핵심: 채점 엔진은 findings/에 의미론만 쓰고 compiler.js(결정론)가 위치·검증·조판. 밴드 1.0–6.0, 영어 피드백.
+- TOEFL 랩은 문제 출제·채점을 위한 선택적 별도 프로젝트다. Sentence Shooter의 플레이·수집·분석·배포 인계에는 필요하지 않다.

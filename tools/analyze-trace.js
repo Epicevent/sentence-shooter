@@ -1,10 +1,30 @@
 const fs = require('fs');
-const dir = 'C:/Users/com/Documents/toefl-writing/traces';
-const requested = process.argv[2];
-const files = fs.readdirSync(dir).filter(x => x.endsWith('.json') && (!requested || x === requested));
-if (requested && !files.length) throw new Error('trace not found: ' + requested);
+const path = require('path');
+const repo = path.resolve(__dirname, '..');
+const args = process.argv.slice(2);
+let dir = path.resolve(process.env.SHOOTER_TRACE_DIR || path.join(repo, 'traces'));
+let requested = null, latest = false;
+for (let i=0;i<args.length;i++){
+  if (args[i] === '--dir') dir = path.resolve(args[++i] || '');
+  else if (args[i] === '--latest') latest = true;
+  else if (!requested) requested = args[i];
+  else throw new Error('usage: node tools/analyze-trace.js [trace.json] [--dir DIR] [--latest]');
+}
+if (requested){
+  const direct = path.resolve(requested);
+  if (fs.existsSync(direct) && fs.statSync(direct).isFile()){
+    dir = path.dirname(direct); requested = path.basename(direct);
+  }
+}
+if (!fs.existsSync(dir)) throw new Error('trace directory not found: ' + dir + '\nStart: npm run dev');
+let files = fs.readdirSync(dir).filter(x => x.endsWith('.json') && (!requested || x === requested));
+files.sort((a,b)=>fs.statSync(path.join(dir,a)).mtimeMs-fs.statSync(path.join(dir,b)).mtimeMs);
+if (latest && files.length) files = [files.at(-1)];
+if (requested && !files.length) throw new Error('trace not found: ' + path.join(dir, requested));
+if (!files.length) throw new Error('no traces found in: ' + dir);
 for (const f of files){
-  const T = JSON.parse(fs.readFileSync(dir + '/' + f));
+  const tracePath = path.join(dir, f);
+  const T = JSON.parse(fs.readFileSync(tracePath));
   const S = T.samples, E = T.events;
   const dur = S.length ? (S[S.length-1].t - S[0].t)/1000 : 0;
   const ds = S.map(s => s.d).filter(d => d !== null).sort((a,b)=>a-b);
@@ -158,7 +178,7 @@ for (const f of files){
     started:e.at, threat:e.d, left:e.left, tabs:e.tabs, shields:e.shields, points:e.points,
   }))));
   if (visual.length){
-    console.log('visual trace:', visual.length+' scene samples', '| file bytes', fs.statSync(dir + '/' + f).size,
+    console.log('visual trace:', visual.length+' scene samples', '| file bytes', fs.statSync(tracePath).size,
       '| first any/all/target text visible ms', firstAnyVisible?.t ?? null, firstAllVisible?.t ?? null, firstTargetVisible?.t ?? null);
     console.log('visual visibility: live words visible min/max', Math.min(...sceneCounts)+'/'+Math.max(...sceneCounts),
       '| target invisible ms', targetInvisibleMs, '| no live word visible ms', noLiveVisibleMs);
