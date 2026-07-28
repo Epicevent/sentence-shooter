@@ -246,7 +246,7 @@ function startGame(mode){
     score: 0, combo: 0, lives: 3, solved: 0, kills: 0, plinks: 0,
     best: +(localStorage.getItem('shooter2_best') || 0),
     ship: { x: W/2 }, missiles: [], fireQueues: [], words: [], parts: [], stars: [],
-    lock: null, freeze: 0,
+    lock: null, freeze: 0, missGraceUntil: 0,
     tabs: 2, shields: 1, perfect: true, nextLife: 10000,
     wordT: 0, beatT: 0,
     idx: 0, sentence: null, recent: [],
@@ -260,12 +260,14 @@ function startGame(mode){
     ? '# TYPE the word that comes NEXT — every letter is a missile'
     : '# TAP the word that comes NEXT — committed volleys free the next target immediately';
   traceStart(g.mode);
+  tEv('item_stock', { reason: 'start', tabs: g.tabs, shields: g.shields });
   nextSentence();
   requestAnimationFrame(frame);
 }
 
 // significant characters (typed); punctuation like commas/periods auto-fires
 const SIG = /[a-z0-9'-]/i;
+const MISS_BURST_MS = 220;  // one mistyped word should not become one punishment per letter
 function sigLen(text){ let n = 0; for (const c of text) if (SIG.test(c)) n++; return n; }
 
 function pickSentence(){
@@ -411,6 +413,7 @@ function handleKey(key){
   if (!t || t.consumed >= t.text.length) return;
   const expected = t.text[t.consumed];
   if (expected.toLowerCase() === key.toLowerCase()){
+    g.missGraceUntil = 0;                    // real progress starts a fresh mistake boundary
     g.lock = t;
     const letter = expected;
     t.consumed++;
@@ -422,6 +425,14 @@ function handleKey(key){
     }
     for (let i = 1; i < weaponLv(); i++) launchMissile(t, 0);   // escort missiles: pure spectacle
   } else if (SIG.test(key)){
+    const now = performance.now();
+    if (now < g.missGraceUntil){
+      g.missGraceUntil = now + MISS_BURST_MS;       // keep one continuous wrong word in one burst
+      tEv('miss_suppressed', { k: key, want: expected, w: t.text,
+        remaining: Math.ceil(g.missGraceUntil - now) });
+      return;
+    }
+    g.missGraceUntil = now + MISS_BURST_MS;
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     t.err = 0.35;
     for (const w of g.words) w.y += (g.solved < 3 ? 12 : 26);   // gentler lunge while warming up
@@ -445,11 +456,12 @@ function handleTab(){
   }
   if (g.tabs <= 0){
     sfx.plink();
-    $('msg').textContent = '# no ⚡ left — only PERFECT sentences refill it';
+    $('msg').textContent = '# no ⚡ left — PERFECT sentences or a fresh 12-combo refill it';
     return;
   }
   g.tabs--; g.perfect = false; t.auto = true; g.lock = t;
-  tEv('tab', { w: t.text, at: t.consumed || (t.maxhp - t.hp) });
+  tEv('tab', { w: t.text, at: t.consumed || (t.maxhp - t.hp), left: g.tabs,
+    d: Math.round((H - 64) - (t.y + t.h)) });
   tone(300, 900, .12, 'square', .06);
   if (t.consumed > 0){
     while (t.consumed < t.text.length){
@@ -478,13 +490,19 @@ function resolveWord(word){
   if (!word || word.resolved || word.order !== g.idx) return;
   word.resolved = true;
   word.resolvedAt = performance.now();
+  g.missGraceUntil = 0;
   if (g.lock === word) g.lock = null;
   g.kills++; g.idx++; g.wordT = 0;
   if (!word.auto){
     g.combo++;
     if (g.combo === 12){        // streak mastery feeds the tab stock (his intuition, adopted)
-      if (g.tabs < 4){ g.tabs++; banner('+1 ⚡ — COMBO 12', true); sfx.up(); }
-      else g.score += 300;
+      if (g.tabs < 4){
+        g.tabs++; tEv('item_gain', { item: 'tab', reason: 'combo12', left: g.tabs });
+        banner('+1 ⚡ — COMBO 12', true); sfx.up();
+      } else {
+        g.score += 300;
+        tEv('item_overflow', { item: 'tab', reason: 'combo12', left: g.tabs, points: 300 });
+      }
     }
   }
   const lvBefore = WEAPONS[weaponLv()-1];
@@ -525,12 +543,23 @@ function sentenceClear(){
   let earned = '';
   if (g.perfect){
     banner('PERFECT +1⚡', true);
-    if (g.tabs < 4){ g.tabs++; earned = '  <span style="color:var(--gold)">+1 ⚡ (perfect)</span>'; sfx.up(); }
-    else { g.score += 500; earned = '  <span style="color:var(--gold)">⚡ FULL +500</span>'; }  // OpenTyrian consolation-prize rule
+    if (g.tabs < 4){
+      g.tabs++; tEv('item_gain', { item: 'tab', reason: 'perfect', left: g.tabs });
+      earned = '  <span style="color:var(--gold)">+1 ⚡ (perfect)</span>'; sfx.up();
+    } else {
+      g.score += 500;
+      tEv('item_overflow', { item: 'tab', reason: 'perfect', left: g.tabs, points: 500 });
+      earned = '  <span style="color:var(--gold)">⚡ FULL +500</span>';
+    }  // OpenTyrian consolation-prize rule
   } else banner('CLEAR');
   if (secs <= Math.ceil(g.sentence.length * 1.5)){   // speed mastery pays out in shields
-    if (g.shields < 2){ g.shields++; earned += '  <span style="color:var(--gold)">+1 🛡 (fast clear)</span>'; }
-    else g.score += 300;
+    if (g.shields < 2){
+      g.shields++; tEv('item_gain', { item: 'shield', reason: 'fast_clear', left: g.shields });
+      earned += '  <span style="color:var(--gold)">+1 🛡 (fast clear)</span>';
+    } else {
+      g.score += 300;
+      tEv('item_overflow', { item: 'shield', reason: 'fast_clear', left: g.shields, points: 300 });
+    }
   }
   checkExtraLife();
   tEv('clear', { len: g.sentence.length, secs, perfect: g.perfect });
@@ -542,7 +571,7 @@ function loseLife(word){
   g.perfect = false; g.lock = null; g.wordT = 0;
   if (g.shields > 0){   // shield absorbs the breakthrough: ship, gun and combo survive
     g.shields--;
-    tEv('shield_absorb', { w: word.text });
+    tEv('shield_absorb', { w: word.text, left: g.shields });
     banner('SHIELD', true); tone(220, 660, .18, 'square', .09); buzz(60);
     for (const w of g.words) w.y -= H * 0.55;
     $('msg').innerHTML = '<span style="color:var(--gold)">🛡 shield absorbed "' + esc(word.text) + '"</span>';
@@ -564,7 +593,8 @@ function gameOver(){
   g.over = true;
   if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
   const acc = (g.kills + g.plinks) ? Math.round(100 * g.kills / (g.kills + g.plinks)) : 100;
-  tEv('over', { score: g.score, solved: g.solved, acc, kills: g.kills, plinks: g.plinks });
+  tEv('over', { score: g.score, solved: g.solved, acc, kills: g.kills, plinks: g.plinks,
+    tabs: g.tabs, shields: g.shields });
   traceSend();
   $('over-stats').innerHTML =
     'score <b style="color:var(--gold)">' + g.score + '</b><br>' +

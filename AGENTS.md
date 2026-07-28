@@ -33,7 +33,9 @@
 김록기의 지시: "형용사 피드백 말고 실제 쌓인 데이터를 봐라". 게임필은 에이전트가 판정할 수 없다
 (우리는 화면을 못 느낀다). 그래서:
 - 게임이 세션 전체를 기록: 8Hz 샘플 `{t, d(다음단어→데드라인 px), n, q(판정 후 연출 대기), sp, c, l, m}` + 이벤트
-  (kill/settle/miss/life_lost/shield_absorb/clear/tab/over). `kill`은 논리 판정, `settle.lag`는 실제 폭발까지 걸린 ms다.
+  (kill/settle/miss/miss_suppressed/life_lost/shield_absorb/clear/tab/item_stock/item_gain/item_overflow/over). `kill`은 논리 판정,
+  `settle.lag`는 실제 폭발까지 걸린 ms다. `miss_suppressed`는 220ms 오답 버스트 안에서 벌점 없이 흡수한 후속 키다.
+  아이템 이벤트에는 획득 이유와 사용 후 재고가 남으며, `tab`에는 시작 글자 수와 사용 시점의 위협거리도 남는다.
   게임오버·pagehide 시 `POST /api/trace`.
 - 수집 서버: `C:\Users\com\Documents\toefl-writing\server.js` (포트 7777, `node server.js`).
   `/game` 라우트가 이 리포의 index.html을 서빙하고, 트레이스는 `toefl-writing/traces/tr_*.json`에 쌓인다.
@@ -61,6 +63,8 @@
   단어가 입력 가능한 블록처럼 보이지 않아야 한다. 문장 전환 때 남은 잔해는 `settle(forced:true)`로 마감한다.
 - 타격감용 50ms hit-stop·폭발·진동·점수 팝업은 `settleWord`에 남는다. 입력 핸들러는 hit-stop 중에도 살아 있다.
 - 빠른 성공 세션은 40샘플 미만이어도 이벤트가 있으면 pagehide에서 저장한다. 이탈 전송의 `keepalive`를 제거하지 말 것.
+- 키보드에서 한 번 잘못 고른 단어를 빠르게 끝까지 친 경우 220ms 안의 후속 오답은 `miss_suppressed`로만 기록한다.
+  벌점·콤보 초기화·대형 lunge는 첫 글자 한 번만 적용하고, 올바른 입력이 들어오면 즉시 새 오답 경계를 연다.
 - 회귀검사: `node tools/test-input-pipeline.js`. 연속 Tab 즉시 전진, 화면상 잔존, 헛소모 방지,
   corpse 오입력 방지, 다중 타깃 탄막 독립성, kill→settle 1:1을 고정한다.
 
