@@ -74,6 +74,8 @@
   <span>score <b id="h-score">0</b></span>
   <span>combo x<b id="h-combo">0</b> · <span id="h-weapon">MK-I</span></span>
   <span id="h-tabs" style="cursor:pointer">⚡<b>2</b></span>
+  <span id="h-hints" style="cursor:pointer">💡<b>1</b></span>
+  <span id="h-shields">🛡<b>1</b></span>
   <span id="h-lives">▲▲▲</span>
   <span>best <b id="h-best">0</b></span>
 </div>
@@ -86,8 +88,9 @@
       <b>TYPE MODE</b> (keyboard): type the next word — every letter fires a missile.<br>
       <b>TAP MODE</b> (touch): tap the next word — lock on, mash for more missiles.<br>
       combo upgrades your launcher MK-I → MK-IV. wrong input = combo reset.<br>
-      <b>TAB</b> completes the word you started — exactly like your shell.<br>
-      costs one ⚡ (tap the ⚡ badge on touch). earn ⚡ only with <b>PERFECT</b> sentences — tab-assisted clears never count.<br>
+      items — <b>TAB ⚡</b> completes the word you started, like your shell (earn: PERFECT sentence).<br>
+      <b>/ 💡</b> reveals the next letter (earn: combo 12). <b>🛡</b> absorbs one breakthrough (earn: speed-clear).<br>
+      full stock converts to points. hesitate and the formation accelerates; mistakes make it lunge.<br>
       let the next word reach your line and you lose a ship — and your launcher.
     </div>
     <div class="tap">PRESS ANY KEY TO TYPE · TAP TO PLAY BY TOUCH</div>
@@ -210,7 +213,8 @@ function startGame(mode){
     best: +(localStorage.getItem('shooter2_best') || 0),
     ship: { x: W/2 }, missiles: [], words: [], parts: [], stars: [],
     lock: null, volley: 0, volleyT: 0, freeze: 0,
-    tabs: 2, perfect: true, nextLife: 10000,
+    tabs: 2, hints: 1, shields: 1, perfect: true, nextLife: 10000,
+    wordT: 0, beatT: 0,
     idx: 0, sentence: null, recent: [],
     speed: 24, over: false, lastT: performance.now(), t0: 0,
   };
@@ -244,7 +248,9 @@ function nextSentence(){
   g.recent.push(ans); if (g.recent.length > 12) g.recent.shift();
   g.sentence = ans.split(' ');
   g.idx = 0; g.t0 = performance.now(); g.perfect = true;
-  g.speed = Math.min(70, 24 + g.solved * 3.5);
+  // ZType-measured curve: enemies are slow (~29px/s) but growth is geometric (+5%/wave)
+  g.speed = Math.min(95, 34 * Math.pow(1.05, g.solved));
+  g.wordT = 0;
   g.words = []; g.missiles = []; g.lock = null; g.volley = 0;
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   const perRow = 3, margin = 8;
@@ -269,6 +275,8 @@ function updateHud(){
   $('h-combo').textContent = g.combo;
   $('h-weapon').textContent = WEAPONS[weaponLv()-1];
   $('h-tabs').innerHTML = '⚡<b>' + g.tabs + '</b>';
+  $('h-hints').innerHTML = '💡<b>' + g.hints + '</b>';
+  $('h-shields').innerHTML = '🛡<b>' + g.shields + '</b>';
   $('h-lives').textContent = '▲'.repeat(Math.max(0, g.lives)) || '—';
   $('h-best').textContent = g.best;
   $('built').textContent = '> ' + g.sentence.slice(0, g.idx).join(' ');
@@ -308,8 +316,9 @@ function tapAt(x, y){
       g.volley = Math.min(10, g.volley + 2);   // mash = more dakka
     }
   } else {
-    g.plinks++; g.combo = 0; g.score = Math.max(0, g.score - 5);
+    g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     w.err = 0.35;
+    for (const ww of g.words) ww.y += 26;   // mistakes make the formation lunge
     sfx.plink(); shake();
     $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> not "' + esc(w.text) + '" — combo reset';
     updateHud();
@@ -355,8 +364,9 @@ function handleKey(key){
   } else if (SIG.test(key)){
     g.plinks++; g.combo = 0; g.perfect = false; g.score = Math.max(0, g.score - 5);
     t.err = 0.35;
+    for (const w of g.words) w.y += 26;   // mistakes make the formation lunge
     sfx.plink(); shake();
-    $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> "' + esc(t.text) + '" — next letter is "' + esc(expected) + '"';
+    $('msg').innerHTML = '<span style="color:var(--danger)">✗</span> wrong key — combo reset';
     updateHud();
   }
 }
@@ -406,8 +416,14 @@ function checkExtraLife(){
 function killWord(word){
   g.words = g.words.filter(w => w !== word);
   if (g.lock === word){ g.lock = null; g.volley = 0; }
-  g.kills++; g.idx++;
-  if (!word.auto) g.combo++;   // tab-completed kills feed no combo
+  g.kills++; g.idx++; g.wordT = 0;
+  if (!word.auto){
+    g.combo++;
+    if (g.combo === 12){        // streak mastery pays out in hints
+      if (g.hints < 3){ g.hints++; banner('+1 💡', true); sfx.up(); }
+      else g.score += 300;
+    }
+  }
   const lvBefore = WEAPONS[weaponLv()-1];
   const pts = Math.round((word.auto ? 50 : 100) * (1 + Math.min(12, g.combo)*0.1));
   g.score += pts;
@@ -436,18 +452,48 @@ function sentenceClear(){
     if (g.tabs < 4){ g.tabs++; earned = '  <span style="color:var(--gold)">+1 ⚡</span>'; sfx.up(); }
     else { g.score += 500; earned = '  <span style="color:var(--gold)">⚡ FULL +500</span>'; }  // OpenTyrian consolation-prize rule
   } else banner('CLEAR');
+  if (secs <= Math.ceil(g.sentence.length * 1.5)){   // speed mastery pays out in shields
+    if (g.shields < 2){ g.shields++; earned += '  <span style="color:var(--gold)">+1 🛡</span>'; }
+    else g.score += 300;
+  }
   checkExtraLife();
   $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(g.sentence.join(' ')) + '</span> +' + bonus + earned;
   setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 1000);
 }
 
 function loseLife(word){
+  g.perfect = false; g.lock = null; g.volley = 0; g.wordT = 0;
+  if (g.shields > 0){   // shield absorbs the breakthrough: ship, gun and combo survive
+    g.shields--;
+    banner('SHIELD', true); tone(220, 660, .18, 'square', .09); buzz(60);
+    for (const w of g.words) w.y -= H * 0.55;
+    $('msg').innerHTML = '<span style="color:var(--gold)">🛡 shield absorbed "' + esc(word.text) + '"</span>';
+    updateHud(); return;
+  }
   sfx.hit(); buzz(120); shake();
-  g.lives--; g.combo = 0; g.perfect = false; g.lock = null; g.volley = 0;
+  g.lives--; g.combo = 0;
   spawnParts(g.ship.x, H - 40, 20, '#d16969', 200);
   if (g.lives <= 0){ gameOver(); return; }
   $('msg').innerHTML = '<span style="color:var(--danger)">✦ "' + esc(word.text) + '" got through!</span> gun reset — ' + g.lives + ' ships left';
   for (const w of g.words) w.y -= H * 0.55;   // push the formation back up
+  updateHud();
+}
+
+// 💡 = the paid version of "tell me the answer": reveals, never fires
+function handleHint(){
+  if (!g || g.over) return;
+  const t = g.words.find(w => w.order === g.idx);
+  if (!t) return;
+  if (g.hints <= 0){ sfx.plink(); $('msg').textContent = '# no 💡 — build a 12-combo to earn one'; return; }
+  g.hints--; g.perfect = false;
+  tone(500, 1200, .1, 'sine', .07);
+  if (g.mode === 'type'){
+    const next = t.text[t.consumed] || '';
+    $('msg').innerHTML = '💡 next letter: <span style="color:var(--gold)">' + esc(next) + '</span>  (word: <span style="color:var(--gold)">' + esc(t.text) + '</span>)';
+  } else {
+    t.flash = .8;
+    $('msg').innerHTML = '💡 the next word is <span style="color:var(--gold)">' + esc(t.text) + '</span>';
+  }
   updateHud();
 }
 
@@ -477,17 +523,23 @@ function frame(now){
 function update(dt){
   if (g.freeze > 0){ g.freeze -= dt; return; }   // hit-stop
   for (const s of g.stars){ s.y += s.v*dt; if (s.y > H){ s.y = -2; s.x = Math.random()*W; } }
+  g.wordT += dt;
+  const eff = g.speed + Math.min(44, g.wordT * 5);   // hesitation makes the formation hungrier
   const deadline = H - 64;
   let packTop = Infinity;
   for (const w of g.words) packTop = Math.min(packTop, w.y);
   for (const w of g.words){
-    w.y += g.speed * dt;
+    w.y += eff * dt;
     if (w.flash > 0) w.flash -= dt;
     if (w.err > 0) w.err -= dt;
     if (w.y + w.h >= deadline){
       if (w.order === g.idx){ loseLife(w); return; }
-      w.y = Math.min(packTop, 0) - 56 - Math.random()*30;   // armored stragglers rejoin from the top
+      // ZType lesson: every ship on screen must have teeth. an armored word
+      // slipping past permanently angers the whole formation.
+      w.y = Math.min(packTop, 0) - 56 - Math.random()*30;
       packTop = Math.min(packTop, w.y);
+      g.speed = Math.min(120, g.speed * 1.1);
+      tone(70, 45, .2, 'sine', .12);
     }
   }
   // the ship slides under its locked target on its own — you aim by choosing, not steering
@@ -518,6 +570,12 @@ function update(dt){
     }
   }
   g.missiles = g.missiles.filter(m => !m.dead && m.y > -40 && m.x > -40 && m.x < W+40);
+  // heartbeat when the needed word crosses into the danger zone
+  g.danger = g.words.some(w => w.order === g.idx && w.y > H - 200);
+  if (g.danger){
+    g.beatT -= dt;
+    if (g.beatT <= 0){ g.beatT = 0.7; tone(85, 55, .14, 'sine', .16); }
+  } else g.beatT = 0;
   for (const p of g.parts){ p.t += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += (p.text ? 0 : 140)*dt; }
   g.parts = g.parts.filter(p => p.t < p.life);
 }
@@ -530,7 +588,15 @@ function draw(){
   ctx.beginPath(); ctx.moveTo(0, H-64); ctx.lineTo(W, H-64); ctx.stroke(); ctx.setLineDash([]);
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   ctx.textBaseline = 'middle';
-  const danger = g.words.some(w => w.order === g.idx && w.y > H - 200);
+  const danger = !!g.danger;
+  if (danger){   // red vignette pulses with the heartbeat
+    const a = 0.05 + 0.05 * Math.abs(Math.sin(performance.now()/180));
+    const grad = ctx.createLinearGradient(0, H-220, 0, H);
+    grad.addColorStop(0, 'rgba(209,105,105,0)');
+    grad.addColorStop(1, 'rgba(209,105,105,' + a + ')');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, H-220, W, 220);
+  }
   for (const w of g.words){
     const isNext = w.order === g.idx;
     const dmg = w.maxhp - w.hp;
@@ -617,8 +683,10 @@ cv.addEventListener('pointerdown', e => {
 $('start').addEventListener('pointerdown', e => { e.preventDefault(); begin('tap'); });
 $('over').addEventListener('pointerdown', e => { e.preventDefault(); begin(lastMode); });
 $('h-tabs').addEventListener('pointerdown', e => { e.preventDefault(); handleTab(); });
+$('h-hints').addEventListener('pointerdown', e => { e.preventDefault(); handleHint(); });
 window.addEventListener('keydown', e => {
   if (e.key === 'Tab'){ e.preventDefault(); handleTab(); return; }
+  if (e.key === '/' || e.key === '?'){ e.preventDefault(); handleHint(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('start').classList.contains('hidden')){
     if (e.key.length === 1){ e.preventDefault(); begin('type'); }
