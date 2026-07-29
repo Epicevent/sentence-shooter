@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "description": "Portable agent-development harness for Sentence Shooter",
   "scripts": {
+    "resume": "node tools/resume-check.js",
     "dev": "node tools/dev-server.js",
     "test": "node tools/test-input-pipeline.js && node tools/test-portable-workflow.js && node tools/test-trace-fixtures.js",
-    "analyze": "node tools/analyze-trace.js --latest"
+    "analyze": "node tools/analyze-trace.js --latest",
+    "verify:play": "node tools/verify-play.js"
   }
 }

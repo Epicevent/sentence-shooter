@@ -32,9 +32,12 @@ for (const f of files){
   const closeFrac = ds.length ? ds.filter(d => d < 150).length/ds.length : 0;
   const veryClose = ds.length ? ds.filter(d => d < 60).length/ds.length : 0;
   const ev = {}; for (const e of E) ev[e.type] = (ev[e.type]||0)+1;
+  const torusBuild = String(T.meta.build||'').startsWith('torus-');
   // boredom: gaps between consecutive action events (kill/miss) > 5s
   const acts = [
-    ...E.filter(e => ['kill','miss','miss_suppressed','tab','hint','graze','core_burst','cargo_capture','cargo_deliver','escort_fire'].includes(e.type)).map(e => e.t),
+    ...E.filter(e => ['kill','miss','miss_suppressed','tab','hint','word_impact','wing_deploy','wing_damage',
+      'cooling_volley','wake_drive','wake_node','wake_deflect','heat_phase_change','heat_arrow_hit','heat_arrow_end',
+      'heat_volley_end','assembly_launch','assembly_dock','score_break','wrong_shot','shot_reflect','ricochet_hit','thermal_sink'].includes(e.type)).map(e => e.t),
     ...S.filter(s => s.scene && s.scene.move_dir).map(s => s.t),
   ].sort((a,b)=>a-b);
   let gaps = []; for (let i=1;i<acts.length;i++) if (acts[i]-acts[i-1] > 5000) gaps.push([Math.round(acts[i-1]/1000), Math.round(acts[i]/1000)]);
@@ -57,6 +60,12 @@ for (const f of files){
   const visual = S.filter(s => s.scene && Array.isArray(s.scene.words));
   const recoilBanks = visual.map(s => Number(s.scene.recoil_bank) || 0);
   const syncValues = visual.map(s => Number(s.scene.sync) || 0);
+  const rewardRows = visual.map(s => Array.isArray(s.scene.reward) ? s.scene.reward : [0,0,0,0]);
+  const heatRows = visual.map(s => Array.isArray(s.scene.heat) ? s.scene.heat : null).filter(Boolean);
+  const heatArrowRows = visual.flatMap(s => Array.isArray(s.scene.heatArrows) ? s.scene.heatArrows : []);
+  const wakeFieldRows = visual.flatMap(s => Array.isArray(s.scene.wakeFields) ? s.scene.wakeFields : []);
+  const assemblyFlightRows = visual.flatMap(s => Array.isArray(s.scene.assemblyFlights) ? s.scene.assemblyFlights : []);
+  const floorHeat = heatRows.map(row=>Number(row[2])||0);
   const deliveryWindows = visual.map(s => s.scene.delivery_ms)
     .filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
   const liveRows = s => s.scene.words.filter(w => !(w[9] & 1));
@@ -107,7 +116,12 @@ for (const f of files){
     maxBannerCover = Math.max(maxBannerCover, cover);
   }
   const sceneCounts = visual.map(s => liveRows(s).filter(w => w[11] > 0).length);
-  const hostileCounts = visual.map(s => Array.isArray(s.scene.enemyShots) ? s.scene.enemyShots.length : 0);
+  const hostileCounts = visual.map(s => {
+    if (torusBuild && Array.isArray(s.scene.heat)) return Number(s.scene.heat[3])||0;
+    const enemy=Array.isArray(s.scene.enemyShots) ? s.scene.enemyShots.length : 0;
+    const reflected=Array.isArray(s.scene.ricochets) ? s.scene.ricochets.filter(r=>r[5]==='return').length : 0;
+    return enemy+reflected;
+  });
   const maxHostile = hostileCounts.length ? Math.max(...hostileCounts) : 0;
   const avgHostile = hostileCounts.length
     ? +(hostileCounts.reduce((a,b)=>a+b,0)/hostileCounts.length).toFixed(2) : 0;
@@ -197,7 +211,8 @@ for (const f of files){
   const completedMedian = completedDurations.length
     ? completedDurations[Math.floor((completedDurations.length-1)/2)] : null;
   console.log('=== ' + f + ' ===');
-  console.log('mode:', T.meta.mode, '| variant:', T.meta.ab_variant || '-', '| seed:', T.meta.ab_seed ?? '-',
+  console.log('mode:', T.meta.mode, '| variant:', T.meta.ab_variant || '-', '| concept:', T.meta.ab_concept || '-',
+    '| build:', T.meta.build || '-', '| reviewer:', T.meta.reviewer || '-', '| seed:', T.meta.ab_seed ?? '-',
     '| dur:', dur.toFixed(0)+'s', '| samples:', S.length, '| viewport:', T.meta.w+'x'+T.meta.h);
   console.log('events:', JSON.stringify(ev));
   console.log('threat d px: min', ds[0], '| p10', pct(.1), '| median', pct(.5), '| p90', pct(.9));
@@ -205,6 +220,7 @@ for (const f of files){
   console.log('avg sec between logical kills:', avgKill, '| boredom gaps>5s:', JSON.stringify(gaps));
   console.log('visual settle lag ms: avg', avgSettle, '| p90', p90Settle, '| transition flush', forcedSettles+'/'+settles.length);
   console.log('mistake bursts: penalized', misses.length, '| blocked spam inputs', jammedInputs.length,
+    '| score lost', E.filter(e=>e.type==='miss').reduce((n,e)=>n+(e.score_lost||0),0),
     '| legacy suppressed keys', suppressedMisses.length);
   console.log('completed item pace: n', completedDurations.length,
     '| avg sec', completedAvg === null ? '-' : completedAvg.toFixed(1),
@@ -219,18 +235,49 @@ for (const f of files){
       '| first any/all/target text visible ms', firstAnyVisible?.t ?? null, firstAllVisible?.t ?? null, firstTargetVisible?.t ?? null);
     console.log('visual visibility: live words visible min/max', Math.min(...sceneCounts)+'/'+Math.max(...sceneCounts),
       '| target invisible ms', targetInvisibleMs, '| no live word visible ms', noLiveVisibleMs);
-    console.log('hostile fire: avg/max visible', avgHostile+'/'+maxHostile,
+    console.log(torusBuild?'red heat rounds: avg/max visible':'hostile fire: avg/max visible', avgHostile+'/'+maxHostile,
       '| ship hits', E.filter(e=>e.type==='ship_hit').length,
       '| bullet clears', E.filter(e=>e.type==='bullet_clear').length);
-    console.log('recoil reserve: max', recoilBanks.length ? Math.max(...recoilBanks) : 0,
+    if (!torusBuild) console.log('recoil reserve: max', recoilBanks.length ? Math.max(...recoilBanks) : 0,
       '| sampled active frames', recoilBanks.filter(v=>v>0).length,
       '| earned events', E.filter(e=>e.type==='earned_recoil').length,
       '| reserve bonuses', E.filter(e=>e.type==='reserve_bonus').length);
-    console.log('B dodge core: max sync', syncValues.length ? Math.max(...syncValues) : 0,
-      '| grazes', E.filter(e=>e.type==='graze').length,
-      '| impact parries', E.filter(e=>e.type==='impact_parry').length,
-      '| core bursts', E.filter(e=>e.type==='core_burst').length,
-      '| sync lost to hits', E.filter(e=>e.type==='ship_hit').reduce((n,e)=>n+Math.max(0,(e.sync_before||0)-(e.sync_after||0)),0));
+    console.log('reward loop:', T.meta.ab_concept || 'legacy',
+      '| max wing guns', rewardRows.length ? Math.max(...rewardRows.map(row=>row[0]||0)) : 0,
+      '| max wake nodes', rewardRows.length ? Math.max(...rewardRows.map(row=>row[1]||0)) : 0,
+      '| wing deploy/cooling/shatter', [ev.wing_deploy||0,ev.cooling_volley||ev.wing_salvo||0,ev.wing_shatter||0].join('/'),
+      '| wake drive/node/deflect', [ev.wake_drive||0,ev.wake_node||0,ev.wake_deflect||0].join('/'),
+      '| heat phase/hit/contact/end', [ev.heat_phase_change||0,ev.heat_arrow_hit||0,ev.heat_arrow_contact||0,ev.heat_arrow_end||0].join('/'),
+      '| assembly launch/dock', [ev.assembly_launch||0,ev.assembly_dock||0].join('/'),
+      '| enemy empowers', ev.enemy_empower||0,
+      '| score breaks', ev.score_break||0);
+    if(heatRows.length) console.log('heat field: max tracers/integral',
+      Math.max(...heatRows.map(row=>row[0]||0))+'/'+Math.max(...heatRows.map(row=>row[1]||0),0),
+      '| local floor avg/max', (floorHeat.reduce((a,b)=>a+b,0)/floorHeat.length).toFixed(3)+'/'+Math.max(...floorHeat).toFixed(3),
+      '| volley samples', heatRows.filter(row=>(row[3]||0)>0).length,
+      '| step avg/max us', (heatRows.reduce((n,row)=>n+(Number(row[6])||0),0)/heatRows.length).toFixed(0)+'/'+Math.max(...heatRows.map(row=>Number(row[7])||0)));
+    if(heatArrowRows.length) console.log('phase silhouettes: round/nonround samples',
+      heatArrowRows.filter(row=>(row[9]||0)===0).length+'/'+heatArrowRows.filter(row=>(row[9]||0)===1).length,
+      '| max chill', Math.max(...heatArrowRows.map(row=>Number(row[10])||0)).toFixed(3),
+      '| source positions preserved', heatArrowRows.filter(row=>Number.isFinite(row[11])&&Number.isFinite(row[12])).length+'/'+heatArrowRows.length);
+    if(assemblyFlightRows.length) console.log('assembly flights: samples',assemblyFlightRows.length,
+      '| direct/core',assemblyFlightRows.filter(row=>row[2]==='direct_rail_slam').length+'/'+assemblyFlightRows.filter(row=>row[2]==='core_link').length,
+      '| max duration ms',Math.max(...assemblyFlightRows.map(row=>Number(row[8])||0)));
+    if(wakeFieldRows.length) console.log('blizzard fields: samples', wakeFieldRows.length,
+      '| max radius', Math.max(...wakeFieldRows.map(row=>Number(row[3])||0)).toFixed(1),
+      '| max simultaneous', Math.max(...visual.map(s=>Array.isArray(s.scene.wakeFields)?s.scene.wakeFields.length:0)));
+    if (!torusBuild){
+      const reflectedEnds=E.filter(e=>e.type==='ricochet_end'&&e.phase==='return');
+      const reflectedTotal=E.filter(e=>e.type==='shot_reflect').length;
+      const legacyReflectedHits=reflectedEnds.length ? 0 : E.filter(e=>e.type==='ricochet_hit').length;
+      console.log('wrong-shot reflection: launched', E.filter(e=>e.type==='wrong_shot').length,
+        '| reflected', reflectedTotal,
+        '| hit ship', E.filter(e=>e.type==='ricochet_hit').length,
+        '| dodged', reflectedEnds.filter(e=>e.reason==='dodged').length,
+        '| wiped', reflectedEnds.filter(e=>['bullet_wipe','impact_clear','wave_clear'].includes(e.reason)).length,
+        '| other canceled', reflectedEnds.filter(e=>!['hit','dodged','bullet_wipe','impact_clear','wave_clear'].includes(e.reason)).length,
+        '| unfinished', Math.max(0,reflectedTotal-reflectedEnds.length-legacyReflectedHits));
+    }
     if (deliveryWindows.length) console.log('delivery window ms: min', Math.min(...deliveryWindows),
       '| max', Math.max(...deliveryWindows), '| captures', E.filter(e=>e.type==='cargo_capture').length,
       '| docks', E.filter(e=>e.type==='cargo_deliver').length,

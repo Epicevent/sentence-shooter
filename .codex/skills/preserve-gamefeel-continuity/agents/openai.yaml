@@ -1,0 +1,4 @@
+interface:
+  display_name: "Preserve Gamefeel Continuity"
+  short_description: "Keep A/B gamefeel changes legible and comparable"
+  default_prompt: "Use $preserve-gamefeel-continuity to change this game without silently replacing its established visual and tactile baseline."

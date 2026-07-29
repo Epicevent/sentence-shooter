@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="amber-glow" x="-300%" y="-300%" width="600%" height="600%"><feGaussianBlur stdDeviation="9"/></filter>
+    <filter id="red-glow" x="-300%" y="-300%" width="600%" height="600%"><feGaussianBlur stdDeviation="11"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="#090917"/>
+  <rect x="22" y="22" width="1236" height="676" rx="12" fill="#111127" stroke="#373763"/>
+  <text x="58" y="76" fill="#e8e6ff" font-family="Cascadia Mono,monospace" font-size="25" letter-spacing="3">LOCKED EFFECT · SAME OBJECT / STATE CHANGE</text>
+  <text x="58" y="108" fill="#7fded8" font-family="Cascadia Mono,monospace" font-size="14">ROUND SILHOUETTE + 11 PX VELOCITY TRAIL · 302 PX/S MOTION REFERENCE</text>
+  <line x1="58" y1="135" x2="1222" y2="135" stroke="#34345b"/>
+
+  <g transform="translate(48 160)">
+    <rect width="218" height="430" rx="8" fill="#0c0c1c" stroke="#29294a"/>
+    <text x="18" y="37" fill="#aaa6d6" font-family="Cascadia Mono,monospace" font-size="15">t = -1 ms</text>
+    <text x="18" y="65" fill="#f0bd67" font-family="Cascadia Mono,monospace" font-size="12">HARMLESS YELLOW</text>
+    <line x1="24" y1="230" x2="194" y2="230" stroke="#262641"/><line x1="58" y1="110" x2="58" y2="340" stroke="#24243c" stroke-dasharray="4 7"/>
+    <circle cx="58" cy="230" r="22" fill="#f0bd67" opacity=".28" filter="url(#amber-glow)"/>
+    <line x1="58" y1="230" x2="47" y2="230" stroke="#f0bd67" stroke-width="3"/>
+    <circle cx="58" cy="230" r="7" fill="#ffe49a" stroke="#f0bd67"/>
+    <text x="18" y="388" fill="#75729e" font-family="Cascadia Mono,monospace" font-size="12">center Δx 0 px</text>
+  </g>
+  <g transform="translate(290 160)">
+    <rect width="218" height="430" rx="8" fill="#0c0c1c" stroke="#29294a"/>
+    <text x="18" y="37" fill="#aaa6d6" font-family="Cascadia Mono,monospace" font-size="15">t = 0 ms</text>
+    <text x="18" y="65" fill="#ff6e7f" font-family="Cascadia Mono,monospace" font-size="12">ARMED RED</text>
+    <line x1="24" y1="230" x2="194" y2="230" stroke="#262641"/><line x1="58" y1="110" x2="58" y2="340" stroke="#24243c" stroke-dasharray="4 7"/>
+    <circle cx="58" cy="230" r="22" fill="#d16969" opacity=".28" filter="url(#red-glow)"/>
+    <line x1="58" y1="230" x2="47" y2="230" stroke="#ff6e7f" stroke-width="3"/>
+    <circle cx="58" cy="230" r="7" fill="#fff0f2" stroke="#ff6e7f"/>
+    <text x="18" y="388" fill="#75729e" font-family="Cascadia Mono,monospace" font-size="12">center Δx 0 px</text>
+  </g>
+  <g transform="translate(532 160)">
+    <rect width="218" height="430" rx="8" fill="#0c0c1c" stroke="#29294a"/>
+    <text x="18" y="37" fill="#aaa6d6" font-family="Cascadia Mono,monospace" font-size="15">t = 80 ms</text>
+    <text x="18" y="65" fill="#ff6e7f" font-family="Cascadia Mono,monospace" font-size="12">ARMED RED</text>
+    <line x1="24" y1="230" x2="194" y2="230" stroke="#262641"/><line x1="58" y1="110" x2="58" y2="340" stroke="#24243c" stroke-dasharray="4 7"/>
+    <circle cx="82" cy="230" r="22" fill="#d16969" opacity=".28" filter="url(#red-glow)"/>
+    <line x1="82" y1="230" x2="71" y2="230" stroke="#ff6e7f" stroke-width="3"/>
+    <circle cx="82" cy="230" r="7" fill="#fff0f2" stroke="#ff6e7f"/>
+    <text x="18" y="388" fill="#75729e" font-family="Cascadia Mono,monospace" font-size="12">center Δx 24 px</text>
+  </g>
+  <g transform="translate(774 160)">
+    <rect width="218" height="430" rx="8" fill="#0c0c1c" stroke="#29294a"/>
+    <text x="18" y="37" fill="#aaa6d6" font-family="Cascadia Mono,monospace" font-size="15">t = 160 ms</text>
+    <text x="18" y="65" fill="#ff6e7f" font-family="Cascadia Mono,monospace" font-size="12">ARMED RED</text>
+    <line x1="24" y1="230" x2="194" y2="230" stroke="#262641"/><line x1="58" y1="110" x2="58" y2="340" stroke="#24243c" stroke-dasharray="4 7"/>
+    <circle cx="106" cy="230" r="22" fill="#d16969" opacity=".28" filter="url(#red-glow)"/>
+    <line x1="106" y1="230" x2="95" y2="230" stroke="#ff6e7f" stroke-width="3"/>
+    <circle cx="106" cy="230" r="7" fill="#fff0f2" stroke="#ff6e7f"/>
+    <text x="18" y="388" fill="#75729e" font-family="Cascadia Mono,monospace" font-size="12">center Δx 48 px</text>
+  </g>
+  <g transform="translate(1016 160)">
+    <rect width="218" height="430" rx="8" fill="#0c0c1c" stroke="#29294a"/>
+    <text x="18" y="37" fill="#aaa6d6" font-family="Cascadia Mono,monospace" font-size="15">t = 240 ms</text>
+    <text x="18" y="65" fill="#ff6e7f" font-family="Cascadia Mono,monospace" font-size="12">ARMED RED</text>
+    <line x1="24" y1="230" x2="194" y2="230" stroke="#262641"/><line x1="58" y1="110" x2="58" y2="340" stroke="#24243c" stroke-dasharray="4 7"/>
+    <circle cx="130" cy="230" r="22" fill="#d16969" opacity=".28" filter="url(#red-glow)"/>
+    <line x1="130" y1="230" x2="119" y2="230" stroke="#ff6e7f" stroke-width="3"/>
+    <circle cx="130" cy="230" r="7" fill="#fff0f2" stroke="#ff6e7f"/>
+    <text x="18" y="388" fill="#75729e" font-family="Cascadia Mono,monospace" font-size="12">center Δx 72 px</text>
+  </g>
+  <path d="M106 620 H1164" stroke="#4d4b76" stroke-width="2"/><path d="M1164 620 l-12 -6 v12 z" fill="#4d4b76"/>
+  <text x="58" y="659" fill="#c9c6ef" font-family="Cascadia Mono,monospace" font-size="14">IDENTITY, SIZE, TRAIL AND MOTION LANGUAGE STAY CONTINUOUS; LETHAL STATE FLIPS AT CONTACT.</text>
+</svg>
