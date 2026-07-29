@@ -1,14 +1,14 @@
-# sentence-shooter — 에이전트 인계 문서 (2026-07-29, v24 디자인 A/B 기준)
+# sentence-shooter — 에이전트 인계 문서 (2026-07-29, v25 통합안 기준)
 
 <!-- CURRENT_CONTRACT_START -->
 ## 압축·재개 게이트 (항상 가장 먼저 실행)
 - 이 저장소 밖의 요약은 이 문서를 대체하지 않는다. 컨텍스트 압축·새 에이전트·작업 재개 뒤에는 코드를 건드리기 전에 저장소 루트에서 `npm run resume`를 실행하고 이 파일 전체를 UTF-8로 다시 읽는다.
 - 현재 라이브 계약은 맨 아래의 가장 높은 버전 절이며, 역사 절과 충돌하면 최신 절이 우선한다. 현재 build 표식과 최신 절의 build가 다르면 작업을 완료했다고 말할 수 없다.
-- 완료 조건은 `npm test`만이 아니다. 현재 build에서 A/B 각각 독립 실제 플레이 trace가 있어야 하고, 주 개발 에이전트가 분석기 요약이 아닌 두 원본 JSON 전체 시간축을 직접 읽어야 한다.
-- 독립 플레이 URL에는 `reviewer=agent-a` / `reviewer=agent-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 정답 실물 보상, 오답 상전이, 실제 피격이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
+- 완료 조건은 `npm test`만이 아니다. 현재 build의 기본 통합안 C에서 독립 실제 플레이 trace 2개가 있어야 하고, 주 개발 에이전트가 분석기 요약이 아닌 두 원본 JSON 전체 시간축을 직접 읽어야 한다.
+- 독립 플레이 URL에는 `reviewer=agent-fusion-a` / `reviewer=agent-fusion-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 A/B 두 조립 경로, 제한 요격 보상, 이동 빙설장, 온도를 보존하는 오답 탄막, 실제 피격, 실물 냉각이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
 - A/B 재미와 게임필은 김록기만 판정한다. 에이전트는 trace 인과, 관측한 조작, 회귀 여부만 보고한다.
 - 김록기가 승인한 연출·규칙은 **잠금된 기준선**이다. 사용자가 명시적으로 폐지하거나 재실험 축으로 지정하기 전에는 새 수학·세계관·A/B 작업을 이유로 바꾸지 않는다. 새 요청은 명시된 축만 열며, 인접한 승인 요소를 교체할 권한으로 확대 해석하지 않는다.
-- 승인된 오답 상전이 기준선은 노란 열 표현이 같은 위치에서 붉게 무장되고, 속도 반대 방향의 11px 선형 꼬리와 원형 실루엣을 유지한 채 날아오는 v21 렌더다. 김록기가 v24 중 화살 실험 종료와 A 원형안 통일을 명시했으므로 현재 A/B 모두 이 원형 기준선을 사용한다. 화살형을 다시 열거나 공통 색·발생 위치·220ms 예고·속도·잔상을 바꾸려면 새 사용자 지시가 필요하다.
+- 승인된 오답 탄막 기준선은 노란 열 표현이 같은 위치에서 붉게 무장되고, 속도 반대 방향의 11px 선형 꼬리와 원형 실루엣을 유지한 채 날아오는 v21 렌더다. v25에서 오답은 열장 tracer를 발사 원점으로 표본화할 뿐 권위 온도장과 tracer를 소비·초기화하지 않는다. 화살형을 다시 열거나 공통 색·발생 위치·220ms 예고·속도·잔상, 또는 오답 온도 보존을 바꾸려면 새 사용자 지시가 필요하다.
 - 점수 회수의 금색 다이아 실루엣·광량·35ms 간격·약 0.5초 가속 상승·도착별 count-up·마지막 HUD pulse는 build22의 잠금된 공통층이다. 현재 비교축은 도착 구도뿐이다: A는 실제 `score-bank` 중심으로 회수되는 control 복원, B는 기존 `27vw` 고정 도착점을 유지한다. 사용자 판정 전 한쪽을 다른 쪽으로 통일하지 않는다.
 <!-- CURRENT_CONTRACT_END -->
 
@@ -84,7 +84,7 @@
   `settle.lag`는 실제 폭발까지 걸린 ms다. `input_jammed`는 v13~v19 오답 회복 중 차단한 연타의 역사 이벤트이며
   v20 라이브 세션은 0이어야 한다. `miss_suppressed`도 구형 트레이스 호환 이벤트다.
   아이템 이벤트에는 획득 이유와 사용 후 재고가 남으며, `tab`에는 시작 글자 수와 사용 시점의 위협거리도 남는다.
-  게임오버·pagehide 시 `POST /api/trace`.
+  게임오버 시 `POST /api/trace`. 로컬 수집에서는 1초마다 `POST /api/trace-checkpoint` 증분을 같은 `session_id` 파일에 병합한다. pagehide의 대용량 whole-session keepalive 한도를 넘지 않으며, github.io에서는 체크포인트 루프를 실행하지 않는다.
 - 수집 서버는 이 저장소의 `tools/dev-server.js`다. 다른 PC에서도 `npm run dev` 후 `http://127.0.0.1:7777/game`으로 플레이하면
   저장소의 untracked `traces/tr_*.json`에 쌓인다. LAN은 `node tools/dev-server.js --host 0.0.0.0`.
   **github.io에서는 수집 안 됨**(정적)이지만 `tools/`가 함께 커밋되어도 Pages 게임은 계속 동작한다.
@@ -119,7 +119,7 @@
   단어가 입력 가능한 블록처럼 보이지 않아야 한다. 이미 판정된 정답의 예약 impact는 문장 전환에서도 정상 점수/실물
   보상을 받고, 입력 보상이 없는 decoy·비정상 잔해만 `settle(forced:true)`로 마감한다.
 - 타격감용 50ms hit-stop·폭발·진동·점수 팝업은 `settleWord`에 남는다. 입력 핸들러는 hit-stop 중에도 살아 있다.
-- 빠른 성공 세션은 40샘플 미만이어도 이벤트가 있으면 pagehide에서 저장한다. 이탈 전송의 `keepalive`를 제거하지 말 것.
+- 빠른 성공 세션은 40샘플 미만이어도 이벤트가 있으면 1초 체크포인트에 들어간다. pagehide는 마지막 증분만 `keepalive`로 보내며, 전체 scene JSON을 한 요청으로 다시 보내지 말 것.
 - 아래 `miss_suppressed`/시작한 어구만 Tab 규칙은 v10의 역사적 계약이며 현재 A/B에서는 v13이 대체한다.
   키보드에서 한 번 잘못 고른 단어를 빠르게 끝까지 친 경우 220ms 안의 후속 오답은 `miss_suppressed`로만 기록한다.
   벌점·콤보 초기화·대형 lunge는 첫 글자 한 번만 적용하고, 올바른 입력이 들어오면 즉시 새 오답 경계를 연다.
@@ -400,3 +400,26 @@
   `scene.wakeFields`는 각 빙설장의 위치·반경·수명·RPM·접촉 수를, `scene.assemblyFlights`는 route/source/target/age/duration을
   남긴다. `npm run resume`는 AGENTS.md 전체와 build 일치를,
   `npm run verify:play`는 current-build `agent-a`/`agent-b` 원본에서 실물 보상·상전이·실제 피격의 최소 증거를 확인한다.
+
+## v25 레일·빙설 통합과 성공 냉각 경제 (2026-07-29, v24 보상 분기를 기본 통합안으로 대체)
+- 쿼리가 없는 `/game`과 `?ab=C`는 기본 통합안 `THERMAL FUSION`이다. `?ab=A/B`는 승인된 두 연출의 비교 기준을 재현하는
+  보조 경로로 남긴다. C의 정답 청크는 짝수 order에서 A의 380ms `direct_rail_slam`, 홀수 order에서 B의 560ms
+  `core_link`를 그대로 사용한다. 두 연출의 실루엣·색·경로·도킹 타이밍을 새로운 혼합 애니메이션으로 덮지 않는다.
+- C의 실제 word impact는 대형 호위기와 STORM을 함께 충전한다. 대형 호위기의 3포구 실루엣은 유지하지만 무한 자동요격은
+  금지한다. 실물 정답 명중 1회당 `escortAmmo` 1발, 최대 3발만 벌며 붉은 탄 1발을 실제로 요격할 때 1발을 소비한다.
+  C의 정답 미사일 성능은 MK-I로 고정하고, word impact의 직선 냉각파도 1개만 발사한다. A 비교 경로의 4포구 연출은 보존한다.
+- C는 B의 movement-only 빙설장을 그대로 가진다. 정답 실물 명중 콤보가 `coolerLevel`을 충전하고 실제 좌우 좌표 변화가
+  있을 때만 넓은 원형 장을 남긴다. 독립 미사일이 논리 순서와 반대로 settle되어도 후착한 낮은 combo가 이미 번 RPM을
+  되감지 못한다. C의 냉각 래스터는 직선 pressure wave와 원형 wake field를 둘 다 계산한다.
+- 오답은 현재 연속 열안개의 tracer를 최대 36개 표본화해 같은 위치에서 원형 붉은 탄을 만든다. 이때 `field.temp`,
+  `field.next`, `floorBins`, `totalMass`, tracer의 active/armed 상태는 바꾸지 않는다. 이벤트는 `heat_volley_armed`이며
+  `field_unchanged:true`와 발사 직전 `heat_integral`을 남긴다. 실패를 이용해 세계 열을 빼는 전략은 성립하면 안 된다.
+- 성공한 냉각만 권위 온도장을 바꾼다. 문장 clear는 C에서 직선 rail과 방사형 quench를 함께 발동하며 방사 front가 처음
+  통과한 각 격자 셀의 온도를 52% 줄인다. 1,500점 `SCORE BREAK`는 현재 붉은 탄막을 지우고 88% 방사 냉각과 넓은 rail을
+  함께 발동한다. 살아 있는 단어 경계는 다음 stencil에서 고정온도 열원으로 다시 clamp된다. 따라서 시각 파동, 안개 감소,
+  HUD 온도, 실제 격자 변화가 같은 시간축에서 움직인다.
+- trace meta build는 `torus-25`, pipeline은 7이다. `scene.quenchBursts`는 id/중심/현재·최대 반경/수명/강도/reason/통과 셀 수를
+  보존한다. `thermal_clear_start/end`는 `heat_before/after`를, `escort_intercept_spent`는 남은 탄약을 남긴다. 실제 초기 열량이
+  0.1 미만이어도 0으로 뭉개지지 않도록 heat integral/floor/max/source 값은 trace에서 소수 4자리로 보존한다.
+  기본 C 완료 검증은 `reviewer=agent-fusion-a`와 `reviewer=agent-fusion-b`의 두 원본 세션을 주 개발 에이전트가 끝까지 읽고,
+  `npm run verify:play`가 두 조립 경로·제한 요격·이동 빙설·온도 보존 오답·실제 피격·실물 냉각을 확인해야 한다.

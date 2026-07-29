@@ -36,8 +36,9 @@ for (const f of files){
   // boredom: gaps between consecutive action events (kill/miss) > 5s
   const acts = [
     ...E.filter(e => ['kill','miss','miss_suppressed','tab','hint','word_impact','wing_deploy','wing_damage',
-      'cooling_volley','wake_drive','wake_node','wake_deflect','heat_phase_change','heat_arrow_hit','heat_arrow_end',
-      'heat_volley_end','assembly_launch','assembly_dock','score_break','wrong_shot','shot_reflect','ricochet_hit','thermal_sink'].includes(e.type)).map(e => e.t),
+      'cooling_volley','wake_drive','wake_node','wake_deflect','heat_phase_change','heat_volley_armed','heat_arrow_hit','heat_arrow_end',
+      'heat_volley_end','assembly_launch','assembly_dock','score_break','thermal_clear_start','thermal_clear_end',
+      'escort_intercept_spent','wrong_shot','shot_reflect','ricochet_hit','thermal_sink'].includes(e.type)).map(e => e.t),
     ...S.filter(s => s.scene && s.scene.move_dir).map(s => s.t),
   ].sort((a,b)=>a-b);
   let gaps = []; for (let i=1;i<acts.length;i++) if (acts[i]-acts[i-1] > 5000) gaps.push([Math.round(acts[i-1]/1000), Math.round(acts[i]/1000)]);
@@ -64,8 +65,10 @@ for (const f of files){
   const heatRows = visual.map(s => Array.isArray(s.scene.heat) ? s.scene.heat : null).filter(Boolean);
   const heatArrowRows = visual.flatMap(s => Array.isArray(s.scene.heatArrows) ? s.scene.heatArrows : []);
   const wakeFieldRows = visual.flatMap(s => Array.isArray(s.scene.wakeFields) ? s.scene.wakeFields : []);
+  const quenchBurstRows = visual.flatMap(s => Array.isArray(s.scene.quenchBursts) ? s.scene.quenchBursts : []);
   const assemblyFlightRows = visual.flatMap(s => Array.isArray(s.scene.assemblyFlights) ? s.scene.assemblyFlights : []);
-  const heatPhases = E.filter(e => e.type === 'heat_phase_change');
+  const heatPhases = E.filter(e => e.type === 'heat_phase_change' || e.type === 'heat_volley_armed');
+  const thermalClears = E.filter(e => e.type === 'thermal_clear_end' && Number.isFinite(e.heat_before) && Number.isFinite(e.heat_after));
   const floorHeat = heatRows.map(row=>Number(row[2])||0);
   const deliveryWindows = visual.map(s => s.scene.delivery_ms)
     .filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
@@ -246,9 +249,10 @@ for (const f of files){
     console.log('reward loop:', T.meta.ab_concept || 'legacy',
       '| max wing guns', rewardRows.length ? Math.max(...rewardRows.map(row=>row[0]||0)) : 0,
       '| max wake nodes', rewardRows.length ? Math.max(...rewardRows.map(row=>row[1]||0)) : 0,
+      '| max escort ammo', rewardRows.length ? Math.max(...rewardRows.map(row=>row[6]||0)) : 0,
       '| wing deploy/cooling/shatter', [ev.wing_deploy||0,ev.cooling_volley||ev.wing_salvo||0,ev.wing_shatter||0].join('/'),
       '| wake drive/node/deflect', [ev.wake_drive||0,ev.wake_node||0,ev.wake_deflect||0].join('/'),
-      '| heat phase/hit/contact/end', [ev.heat_phase_change||0,ev.heat_arrow_hit||0,ev.heat_arrow_contact||0,ev.heat_arrow_end||0].join('/'),
+      '| heat arm/hit/contact/end', [(ev.heat_volley_armed||0)+(ev.heat_phase_change||0),ev.heat_arrow_hit||0,ev.heat_arrow_contact||0,ev.heat_arrow_end||0].join('/'),
       '| assembly launch/dock', [ev.assembly_launch||0,ev.assembly_dock||0].join('/'),
       '| enemy empowers', ev.enemy_empower||0,
       '| score breaks', ev.score_break||0);
@@ -272,6 +276,9 @@ for (const f of files){
     if(wakeFieldRows.length) console.log('blizzard fields: samples', wakeFieldRows.length,
       '| max radius', Math.max(...wakeFieldRows.map(row=>Number(row[3])||0)).toFixed(1),
       '| max simultaneous', Math.max(...visual.map(s=>Array.isArray(s.scene.wakeFields)?s.scene.wakeFields.length:0)));
+    if(quenchBurstRows.length||thermalClears.length) console.log('physical clear waves: samples/end events',quenchBurstRows.length+'/'+thermalClears.length,
+      '| total measured heat before/after',thermalClears.reduce((n,e)=>n+e.heat_before,0).toFixed(3)+'/'+thermalClears.reduce((n,e)=>n+e.heat_after,0).toFixed(3),
+      '| escort intercepts spent',ev.escort_intercept_spent||0);
     if (!torusBuild){
       const reflectedEnds=E.filter(e=>e.type==='ricochet_end'&&e.phase==='return');
       const reflectedTotal=E.filter(e=>e.type==='shot_reflect').length;

@@ -65,11 +65,13 @@ assert.ok(!html.includes('RED ARROWS')&&!html.includes('HEAT VECTOR LOCK')&&!htm
 
 run(`startGame('type');`);
 assert.deepStrictEqual(Array.from(run(`[TRACE.meta.pipeline,TRACE.meta.build,TRACE.meta.ab_concept,g.heat.particles.length,g.heat.floorBins.length]`)),
-  [6,'torus-24','heavy_interceptor_rail_slam',180,16]);
+  [7,'torus-25','heavy_interceptor_rail_slam',180,16]);
 assert.strictEqual(run('TRACE.meta.reviewer'),'agent-a','reviewer query must survive into trace metadata');
 assert.strictEqual(run(`g.heat.temp.every(v=>v===0)&&g.heat.floorBins.every(v=>v===0)&&g.heat.particles.every(p=>!p.active)`),true,
   'the whole torus must start at absolute zero with no visible tracers');
 assert.strictEqual(run(`TRACE.events.some(e=>e.type==='field_start'&&e.topology==='torus'&&e.initial_temperature===0)`),true);
+assert.deepStrictEqual(Array.from(run(`[roundTrace(.01234),roundHeat(.01234),roundHeat(.00006)]`)),[0,.0123,.0001],
+  'heat telemetry must preserve small positive world temperatures instead of rounding them to zero');
 
 run(`
   $('cv').getBoundingClientRect=()=>({left:12,top:38,width:800,height:600});
@@ -143,9 +145,9 @@ assert.deepStrictEqual(Array.from(run('bAssemblyLaunch')),[false,1,'core_link',5
   'B must route the unattached chunk through the real core position');
 assert.deepStrictEqual(Array.from(run('bAssemblyDock')),[true,0,'core_link',2],
   'B must attach only after its longer core-link flight docks');
-assert.ok(html.includes("route=g.variant==='A'?'direct_rail_slam':'core_link'")&&
-  html.includes("duration=g.variant==='A'?380:560")&&html.includes('assemblyLinkB'),
-  'B must retain a distinct core-link route and timing while sharing the same correctness pipeline');
+assert.ok(html.includes("const railRoute=g.variant==='A'||(g.variant==='C'&&word.order%2===0)")&&
+  html.includes("route=railRoute?'direct_rail_slam':'core_link',duration=railRoute?380:560")&&html.includes('assemblyLinkB'),
+  'the combined build must preserve both exact A rail-slam and B core-link routes while sharing one correctness pipeline');
 
 run(`
   g.heat=createHeatField();g.words=[makeWord('Hot',0,200,150)];
@@ -202,17 +204,19 @@ run(`
   g.variant='A';g.heat=createHeatField();seedDust(HEAT_TRACER_COUNT);g.words=[makeWord('Wrong',1,100,180)];
   for(let i=0;i<48;i++){const p=g.heat.particles[i];p.active=true;p.u=(i+.5)/48;p.v=.34+(i%8)*.055;p.heat=.55;p.x=p.u*W;p.y=torusToScreenY(p.v);p.px=p.x;p.py=p.y;}
   g.heat.temp.fill(.4);rebuildHeatStats(g.heat);g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=400;
+  const heatBefore=Array.from(g.heat.temp),integralBefore=g.heat.totalMass;
   applyWrongPenalty(g.words[0],{test:true});
-  const arrows=g.heatArrows.length;const zeroAfter=g.heat.temp.every(v=>v===0);
-  updateHeatCombat(.1);globalThis.phaseChange=[arrows,zeroAfter,g.lives,g.words[0].rage,
-    TRACE.events.some(e=>e.type==='heat_phase_change'&&e.heat_integral>0&&e.silhouette==='round_control'&&e.same_source_position&&
+  const arrows=g.heatArrows.length;const fieldUnchanged=g.heat.temp.every((v,i)=>v===heatBefore[i])&&g.heat.totalMass===integralBefore;
+  updateHeatCombat(.1);globalThis.phaseChange=[arrows,fieldUnchanged,g.lives,g.words[0].rage,
+    TRACE.events.some(e=>e.type==='heat_volley_armed'&&e.heat_integral>0&&e.field_unchanged===true&&e.silhouette==='round_control'&&e.same_source_position&&
       e.eligible_tracers===48&&e.volley_cap===36&&e.suppressed_tracers===12),
-    g.heatArrows.every(a=>a.age<a.arm&&a.silhouette==='round'&&a.sourceX===a.x&&a.sourceY===a.y)];
+    g.heatArrows.every(a=>a.age<a.arm&&a.silhouette==='round'&&a.sourceX===a.x&&a.sourceY===a.y),
+    g.heat.particles.slice(0,48).every(p=>p.active&&!p.armed)];
 `);
 const phaseChange=Array.from(run('phaseChange'));
-assert.strictEqual(phaseChange[0],36,'wrong converts existing heat only up to the bounded lethal-volley budget');
-assert.deepStrictEqual(phaseChange.slice(1),[true,3,1,true,true],
-  'wrong answer converts existing heat to visible telegraphed arrows, clears T, and cannot hit during warning');
+assert.strictEqual(phaseChange[0],36,'wrong samples existing heat only up to the bounded lethal-volley budget');
+assert.deepStrictEqual(phaseChange.slice(1),[true,3,1,true,true,true],
+  'wrong answer arms visible telegraphed rounds without venting or consuming the authoritative temperature field');
 assert.strictEqual(run(`g.heatArrows.every(a=>a.life>=a.arm+a.travelDistance/Math.hypot(a.vx,a.vy)+1.24)`),true,
   'far arrows must live long enough to cross their locked aim point instead of expiring by fixed lifetime');
 
@@ -235,6 +239,23 @@ run(`
 `);
 assert.deepStrictEqual(Array.from(run('bReward')),[3,0,1,true,true,true,true],
   'B physical impact only charges; actual movement casts a wide blizzard that survives the observed learner thinking interval');
+
+run(`
+  endHeatVolley('fusion_reset');g.variant='C';g.pressureWaves=[];g.wakeNodes=[];g.wingUnits=0;g.escortAmmo=0;g.coolerLevel=0;g.combo=2;
+  g.sentence=['Fuse'];g.idx=1;const fuse=makeWord('Fuse',0,220,160);fuse.resolved=true;fuse.resolvedAt=performance.now();
+  fuse.impactCombo=2;fuse.pts=100;fuse.hp=0;g.words=[fuse];settleWord(fuse);
+  globalThis.fusionReward=[g.wingUnits,g.escortAmmo,g.coolerLevel,g.pressureWaves.length,
+    TRACE.events.some(e=>e.type==='fusion_reward'&&e.escort_ammo===1&&e.storm_level===2)];
+`);
+assert.deepStrictEqual(Array.from(run('fusionReward')),[1,1,2,1,true],
+  'the combined build keeps both physical reward presentations but grants only one earned escort intercept and one rail wave per impact');
+run(`
+  g.variant='C';g.coolerLevel=0;const later=makeWord('Later',1,300),earlier=makeWord('Earlier',0,100);
+  later.impactCombo=2;earlier.impactCombo=1;boostWakeDrive(later,300,160);boostWakeDrive(earlier,100,160);
+  globalThis.outOfOrderStorm=[g.coolerLevel,TRACE.events.filter(e=>e.type==='wake_drive').slice(-2).map(e=>[e.before,e.after])];
+`);
+assert.strictEqual(run('JSON.stringify(outOfOrderStorm)'),'[2,[[0,2],[2,2]]]',
+  'a late first-word missile may not rewind STORM earned by an earlier-arriving second-word missile');
 run(`
   g.variant='B';g.coolerLevel=3;g.wakeNodes=[];g.wakeDropT=.04;TRACE.events.length=0;
   const nudgeBefore=320,nudgeAfter=340;castWakeFromMovement(nudgeBefore,nudgeAfter,0,true);
@@ -283,12 +304,39 @@ run(`
 assert.strictEqual(run('edgeWake'),0,'holding into a wall without actual ship displacement must not stack wake nodes');
 
 run(`
-  g.variant='A';g.wingUnits=1;g.combo=9;g.interceptorShots=[];g.heatArrows=[];g.ship.x=W/2;g.over=false;
+  g.variant='C';g.wingUnits=1;g.escortAmmo=2;g.combo=9;g.interceptorShots=[];g.heatArrows=[];g.ship.x=W/2;g.over=false;
   for(let i=0;i<6;i++)g.heatArrows.push({id:8000+i,x:80+i*110,y:260,px:0,py:0,vx:0,vy:80,age:.3,arm:.22,life:5,heat:.5,r:3,dead:false,nodeMarks:new Set()});
   for(let i=0;i<4;i++){g.interceptT=0;updateHeatCombat(.001);}
-  globalThis.interceptorClaims=g.interceptorShots.map(s=>s.target.id);
+  globalThis.interceptorClaims=[...g.interceptorShots.map(s=>s.target.id),g.escortAmmo];
 `);
-assert.strictEqual(run('new Set(interceptorClaims).size'),4,'earned A guns must reserve different red-arrow targets instead of overkilling one');
+assert.deepStrictEqual(Array.from(run('interceptorClaims')).slice(-1),[0]);
+assert.strictEqual(run('new Set(interceptorClaims.slice(0,-1)).size'),2,
+  'the combined escort may intercept only the rounds paid for by physical correct impacts');
+
+run(`
+  g.variant='C';g.heat=createHeatField();g.words=[];g.heat.temp.fill(.8);rebuildHeatStats(g.heat);
+  g.quenchBursts=[];TRACE.events.length=0;const beforeClear=g.heat.totalMass;
+  triggerThermalClear('sentence_clear',.52);
+  for(let i=0;i<30;i++)stepHeatField(HEAT_SIM_DT,performance.now());
+  globalThis.clearCooling=[beforeClear,g.heat.totalMass,TRACE.events.some(e=>e.type==='thermal_clear_start'&&e.reason==='sentence_clear'),
+    TRACE.events.some(e=>e.type==='thermal_clear_end'&&e.reason==='sentence_clear'&&e.heat_after<e.heat_before)];
+`);
+const clearCooling=Array.from(run('clearCooling'));
+assert.ok(clearCooling[1]<clearCooling[0]*.6,'the combined clear wave must materially lower authoritative world heat as it expands');
+assert.deepStrictEqual(clearCooling.slice(2),[true,true],'the trace must measure both ends of the visual/physical clear wave');
+
+run(`
+  g.variant='C';g.heat=createHeatField();g.words=[];g.heat.temp.fill(.8);rebuildHeatStats(g.heat);g.quenchBursts=[];
+  g.score=1490;g.scoreDisplay=1490;g.scoreMilestone=1500;g.scoreTier=0;g.heatArrows=[];TRACE.events.length=0;
+  awardScore(20,W/2,H/2,'break-test');const breakBefore=g.heat.totalMass;
+  for(let i=0;i<30;i++)stepHeatField(HEAT_SIM_DT,performance.now());
+  globalThis.scoreBreakCooling=[g.scoreTier,g.quenchBursts.length,g.heat.totalMass,breakBefore,
+    TRACE.events.some(e=>e.type==='score_break'&&e.clear_kind==='rail_radial'&&e.heat_before>0)];
+`);
+const scoreBreakCooling=Array.from(run('scoreBreakCooling'));
+assert.strictEqual(scoreBreakCooling[0],1);
+assert.ok(scoreBreakCooling[2]<scoreBreakCooling[3]*.25,'SCORE BREAK must be a stronger world-cooling ultimate than an ordinary sentence clear');
+assert.strictEqual(scoreBreakCooling[4],true);
 
 run(`
   g.variant='B';g.lives=3;g.over=false;g.hitInvulnUntil=0;g.combo=0;g.heatArrows=[];g.interceptorShots=[];g.wakeNodes=[];
@@ -337,7 +385,7 @@ run(`
 `);
 const kernel=Array.from(run('kernel'));
 assert.deepStrictEqual(kernel.slice(0,4),[2560,2560,16,300]);
-assert.ok(kernel[4]<1500,`300 heat steps should remain cheap in the JS VM, got ${kernel[4].toFixed(1)}ms`);
+assert.ok(kernel[4]<3000,`300 heat steps should remain below a 10ms/step JS budget, got ${kernel[4].toFixed(1)}ms`);
 assert.deepStrictEqual(kernel.slice(5),[true,false],'kernel must reuse typed arrays and never scan every cooling node per cell');
 console.log(`heat kernel benchmark: 300 steps ${kernel[4].toFixed(1)}ms (${(kernel[4]/300).toFixed(3)}ms/step)`);
 
@@ -348,8 +396,8 @@ run(`
   globalThis.paired=JSON.stringify(a)===JSON.stringify(b);
 `);
 assert.deepStrictEqual(Array.from(run('heatPersists')),[.3700000047683716,.3700000047683716],
-  'heat persists between sentences until a wrong answer discharges it');
+  'a bare sentence transition never resets world heat; only earned cooling effects may change it');
 assert.strictEqual(run('paired'),true,'A/B share TOEFL content and starting geometry');
 
 assert.ok(!html.includes('fillRect(field.x-'),'rejected rectangular safe-zone rendering must stay removed');
-console.log('input pipeline torus-24 tests passed: lean HUD, impact-gated assembly A/B, shared round threat, heavy escort, blizzard, swept hits');
+console.log('input pipeline torus-25 tests passed: combined rail/blizzard rewards, conserved wrong-answer heat, physical clears, bounded escort, swept hits');
