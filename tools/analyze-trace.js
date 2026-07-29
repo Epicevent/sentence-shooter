@@ -65,6 +65,7 @@ for (const f of files){
   const heatArrowRows = visual.flatMap(s => Array.isArray(s.scene.heatArrows) ? s.scene.heatArrows : []);
   const wakeFieldRows = visual.flatMap(s => Array.isArray(s.scene.wakeFields) ? s.scene.wakeFields : []);
   const assemblyFlightRows = visual.flatMap(s => Array.isArray(s.scene.assemblyFlights) ? s.scene.assemblyFlights : []);
+  const heatPhases = E.filter(e => e.type === 'heat_phase_change');
   const floorHeat = heatRows.map(row=>Number(row[2])||0);
   const deliveryWindows = visual.map(s => s.scene.delivery_ms)
     .filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
@@ -260,6 +261,11 @@ for (const f of files){
       heatArrowRows.filter(row=>(row[9]||0)===0).length+'/'+heatArrowRows.filter(row=>(row[9]||0)===1).length,
       '| max chill', Math.max(...heatArrowRows.map(row=>Number(row[10])||0)).toFixed(3),
       '| source positions preserved', heatArrowRows.filter(row=>Number.isFinite(row[11])&&Number.isFinite(row[12])).length+'/'+heatArrowRows.length);
+    if(heatPhases.some(e=>Number.isFinite(e.eligible_tracers))) console.log('phase budget: max eligible/launched/suppressed',
+      Math.max(...heatPhases.map(e=>Number(e.eligible_tracers)||0))+'/'+
+      Math.max(...heatPhases.map(e=>Number(e.arrows)||0))+'/'+
+      Math.max(...heatPhases.map(e=>Number(e.suppressed_tracers)||0)),
+      '| configured cap',Math.max(...heatPhases.map(e=>Number(e.volley_cap)||0)));
     if(assemblyFlightRows.length) console.log('assembly flights: samples',assemblyFlightRows.length,
       '| direct/core',assemblyFlightRows.filter(row=>row[2]==='direct_rail_slam').length+'/'+assemblyFlightRows.filter(row=>row[2]==='core_link').length,
       '| max duration ms',Math.max(...assemblyFlightRows.map(row=>Number(row[8])||0)));

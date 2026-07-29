@@ -200,16 +200,17 @@ assert.deepStrictEqual(Array.from(run('noCorrectShove')),[220,220,0,false],
 
 run(`
   g.variant='A';g.heat=createHeatField();seedDust(HEAT_TRACER_COUNT);g.words=[makeWord('Wrong',1,100,180)];
-  for(let i=0;i<24;i++){const p=g.heat.particles[i];p.active=true;p.u=(i+.5)/24;p.v=.42+(i%4)*.05;p.heat=.55;p.x=p.u*W;p.y=torusToScreenY(p.v);p.px=p.x;p.py=p.y;}
+  for(let i=0;i<48;i++){const p=g.heat.particles[i];p.active=true;p.u=(i+.5)/48;p.v=.34+(i%8)*.055;p.heat=.55;p.x=p.u*W;p.y=torusToScreenY(p.v);p.px=p.x;p.py=p.y;}
   g.heat.temp.fill(.4);rebuildHeatStats(g.heat);g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=400;
   applyWrongPenalty(g.words[0],{test:true});
   const arrows=g.heatArrows.length;const zeroAfter=g.heat.temp.every(v=>v===0);
   updateHeatCombat(.1);globalThis.phaseChange=[arrows,zeroAfter,g.lives,g.words[0].rage,
-    TRACE.events.some(e=>e.type==='heat_phase_change'&&e.heat_integral>0&&e.silhouette==='round_control'&&e.same_source_position),
+    TRACE.events.some(e=>e.type==='heat_phase_change'&&e.heat_integral>0&&e.silhouette==='round_control'&&e.same_source_position&&
+      e.eligible_tracers===48&&e.volley_cap===36&&e.suppressed_tracers===12),
     g.heatArrows.every(a=>a.age<a.arm&&a.silhouette==='round'&&a.sourceX===a.x&&a.sourceY===a.y)];
 `);
 const phaseChange=Array.from(run('phaseChange'));
-assert.strictEqual(phaseChange[0],24,'wrong converts only heat that existed before the mistake');
+assert.strictEqual(phaseChange[0],36,'wrong converts existing heat only up to the bounded lethal-volley budget');
 assert.deepStrictEqual(phaseChange.slice(1),[true,3,1,true,true],
   'wrong answer converts existing heat to visible telegraphed arrows, clears T, and cannot hit during warning');
 assert.strictEqual(run(`g.heatArrows.every(a=>a.life>=a.arm+a.travelDistance/Math.hypot(a.vx,a.vy)+1.24)`),true,
@@ -230,10 +231,21 @@ run(`
   const wake=makeWord('Wake',0,330,160);wake.resolved=true;wake.resolvedAt=performance.now();wake.impactCombo=3;wake.pts=100;wake.hp=0;g.words=[wake];
   settleWord(wake);const beforeMove=g.wakeNodes.length;moveInput.right=true;update(.31);moveInput.right=false;
   const bStorm=g.wakeNodes[0];globalThis.bReward=[g.coolerLevel,beforeMove,g.wakeNodes.length,g.wakeNodes.length>beforeMove,
-    TRACE.events.some(e=>e.type==='wake_drive'&&e.movement_only===true),bStorm.radius>=170,bStorm.life>=5];
+    TRACE.events.some(e=>e.type==='wake_drive'&&e.movement_only===true),bStorm.radius>=170,bStorm.life>=23.9];
 `);
 assert.deepStrictEqual(Array.from(run('bReward')),[3,0,1,true,true,true,true],
-  'B physical impact only charges; actual movement casts a wide persistent blizzard');
+  'B physical impact only charges; actual movement casts a wide blizzard that survives the observed learner thinking interval');
+run(`
+  g.variant='B';g.coolerLevel=3;g.wakeNodes=[];g.wakeDropT=.04;TRACE.events.length=0;
+  const nudgeBefore=320,nudgeAfter=340;castWakeFromMovement(nudgeBefore,nudgeAfter,0,true);
+  globalThis.nudgeWake=[g.wakeNodes.length,g.wakeNodes[0].x,
+    TRACE.events.some(e=>e.type==='wake_node'&&e.reason==='movement'),castWakeFromMovement(340,340,0,true)];
+`);
+assert.deepStrictEqual(Array.from(run('nudgeWake')).slice(0,3),[1,340,true],
+  'a short keyboard nudge must cast the charged B blizzard even when no animation frame observes held input');
+assert.strictEqual(run('nudgeWake[3]'),null,'no-coordinate-change input must still be unable to cast a blizzard');
+assert.ok(html.includes('castWakeFromMovement(beforeNudge,g.ship.x,0,true)'),
+  'the real ArrowLeft/ArrowRight nudge path must feed the movement-only reward');
 
 run(`
   g.variant='A';g.pressureWaves=[];g.wingUnits=0;g.pendingSentenceClear=false;g.solved=0;TRACE.events.length=0;

@@ -832,6 +832,7 @@ const MAX_WING_UNITS = 1;
 const HEAT_GRID_X = 64, HEAT_GRID_Y = 40, HEAT_SIM_DT = 1/30, HEAT_KAPPA = .00125;
 const HEAT_SINK_CAP = 12;
 const TORUS_VERTICAL_SCREENS = 1, HEAT_TRACER_COUNT = 180, HEAT_ARROW_ARM_MS = 220;
+const HEAT_VOLLEY_CAP = 36, HEAT_VOLLEY_COLS = 6, HEAT_VOLLEY_ROWS = 4;
 const DUST_TOP = 104, DUST_SPAWN_INTERVAL = .22, FLOOR_BINS = 16;
 const FLOOR_HOT = .28, FLOOR_CRITICAL = .58;
 const SCORE_STEP = 1500;
@@ -1029,11 +1030,33 @@ function dustBand(){
 }
 function triggerDustHazard(chain,chosen){
   const field=heatField();if(!field)return 0;
-  const band=dustBand(),heatIntegral=field.totalMass,shipY=H-34,arrows=[];
+  const band=dustBand(),heatIntegral=field.totalMass,shipY=H-34,arrows=[],eligible=[];
   for(const p of field.particles){
     if(!p.active||p.armed)continue;
     const sourceHeat=sampleHeatUV(p.u,p.v);
     if(sourceHeat<.035)continue;
+    eligible.push({p,sourceHeat});
+  }
+  // A tracer is a sample of the continuous heat field, not one unit of damage.
+  // Keep one hot representative per screen cell before filling the remaining
+  // budget by temperature, so thinking longer cannot turn one error into an
+  // unbounded wall while the volley still originates across the visible fog.
+  const cellBest=new Map();
+  for(const candidate of eligible){
+    const col=Math.min(HEAT_VOLLEY_COLS-1,Math.floor(torusWrap(candidate.p.u,1)*HEAT_VOLLEY_COLS));
+    const row=Math.min(HEAT_VOLLEY_ROWS-1,Math.floor(torusWrap(candidate.p.v,TORUS_VERTICAL_SCREENS)/TORUS_VERTICAL_SCREENS*HEAT_VOLLEY_ROWS));
+    const key=row*HEAT_VOLLEY_COLS+col,prior=cellBest.get(key);
+    if(!prior||candidate.sourceHeat>prior.sourceHeat||
+      (candidate.sourceHeat===prior.sourceHeat&&candidate.p.id<prior.p.id))cellBest.set(key,candidate);
+  }
+  const hottest=(a,b)=>b.sourceHeat-a.sourceHeat||a.p.id-b.p.id;
+  const selected=Array.from(cellBest.values()).sort(hottest).slice(0,HEAT_VOLLEY_CAP);
+  const selectedIds=new Set(selected.map(candidate=>candidate.p.id));
+  for(const candidate of eligible.filter(candidate=>!selectedIds.has(candidate.p.id)).sort(hottest)){
+    if(selected.length>=HEAT_VOLLEY_CAP)break;
+    selected.push(candidate);selectedIds.add(candidate.p.id);
+  }
+  for(const {p,sourceHeat} of selected){
     const x=p.u*W,y=torusToScreenY(p.v),jitter=((p.id*47)%101-50)*(1.35-Math.min(1,p.heat));
     const dx=g.ship.x+jitter-x,dy=shipY-y,d=Math.hypot(dx,dy)||1,speed=185+125*Math.min(1,sourceHeat)+18*Math.max(0,(chain||1)-1);
     p.armed=true;
@@ -1049,6 +1072,7 @@ function triggerDustHazard(chain,chosen){
   for(const p of field.particles)if(!p.armed){p.active=false;p.heat=0;}
   addPulse(g.ship.x,H-34,92,'#d16969',.35);banner('WRONG · HEAT VOLLEY ARMED',true);
   tEv('heat_phase_change',{chain:chain||1,floor_temp:roundTrace(band.temp),arrows:arrows.length,
+    eligible_tracers:eligible.length,volley_cap:HEAT_VOLLEY_CAP,suppressed_tracers:Math.max(0,eligible.length-arrows.length),
     warning_ms:HEAT_ARROW_ARM_MS,heat_integral:roundTrace(heatIntegral),chosen:chosen?chosen.order:null,
     source_visual:'continuous_heat_fog',source_min_temp:arrows.length?roundTrace(Math.min(...arrows.map(a=>a.sourceHeat))):null,
     silhouette:'round_control',same_source_position:true});
@@ -1581,12 +1605,24 @@ function addWakeNode(x,rpm,reason){
     return existing;
   }
   const node={id:(g.fieldSeq=(g.fieldSeq||0)+1),x:torusWrap(x,W),y:H-48,t:0,
-    life:4.8+Math.min(9,rpm)*.25,radius,rpm,spin:Math.random()*Math.PI*2,marks:0};
+    life:23+Math.min(9,rpm)*.8,radius,rpm,spin:Math.random()*Math.PI*2,marks:0};
   g.wakeNodes.push(node);
   if(g.wakeNodes.length>5)g.wakeNodes.shift();
   tEv('wake_node',{id:node.id,x:roundTrace(node.x),radius:roundTrace(node.radius),life_ms:Math.round(node.life*1000),
     rpm:roundTrace(rpm),reason:reason||'move'});
   return node;
+}
+function castWakeFromMovement(beforeX,afterX,dt,immediate){
+  const movedPx=Math.abs(afterX-beforeX);
+  if(g.variant!=='B'||movedPx<=.25||g.coolerLevel<=0)return null;
+  g.wakeDropT-=Math.max(0,dt||0);
+  const rpm=1+Math.min(9,g.coolerLevel)*.18;
+  if(immediate||g.wakeDropT<=0){
+    const node=addWakeNode(afterX,rpm,'movement');
+    g.wakeDropT=Math.max(.075,.29-.02*Math.min(9,g.coolerLevel));
+    return node;
+  }
+  return null;
 }
 function boostWakeDrive(word,x,y){
   const combo=word.impactCombo||1;g.coolerLevel=Math.min(9,combo);
@@ -2071,11 +2107,8 @@ function update(dt){
     g.ship.manualUntil = now+180;
   }
   const movedPx=Math.abs(g.ship.x-shipBeforeX);
-  if(g.variant==='B'&&movedPx>.25&&g.coolerLevel>0){
-    g.wakeDropT-=dt;
-    const rpm=1+Math.min(9,g.coolerLevel)*.18;
-    if(g.wakeDropT<=0){addWakeNode(g.ship.x,rpm,'movement');g.wakeDropT=Math.max(.075,.29-.02*Math.min(9,g.coolerLevel));}
-  }else g.wakeDropT=Math.min(g.wakeDropT,.04);
+  if(movedPx>.25)castWakeFromMovement(shipBeforeX,g.ship.x,dt,false);
+  else g.wakeDropT=Math.min(g.wakeDropT,.04);
   g.visualPhase += dt*.9;
   const deadline = H - 64, rawStep = descentActive && siege ? eff * dt : 0;
   const bankSpend = siege ? Math.min(rawStep,g.recoilBank || 0) : 0;
@@ -2512,7 +2545,9 @@ window.addEventListener('keydown', e => {
     const side = e.key === 'ArrowLeft' ? 'left' : 'right';
     if (!moveInput[side]){
       const nudge = side === 'left' ? -20 : 20;
+      const beforeNudge=g.ship.x;
       g.ship.x = Math.max(16,Math.min(W-16,g.ship.x+nudge));
+      castWakeFromMovement(beforeNudge,g.ship.x,0,true);
     }
     moveInput[side] = true;
     return;
