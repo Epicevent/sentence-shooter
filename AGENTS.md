@@ -1,15 +1,16 @@
-# sentence-shooter — 에이전트 인계 문서 (2026-07-29, v25 통합안 기준)
+# sentence-shooter — 에이전트 인계 문서 (2026-07-29, v26 수동 STORM A/B 기준)
 
 <!-- CURRENT_CONTRACT_START -->
 ## 압축·재개 게이트 (항상 가장 먼저 실행)
 - 이 저장소 밖의 요약은 이 문서를 대체하지 않는다. 컨텍스트 압축·새 에이전트·작업 재개 뒤에는 코드를 건드리기 전에 저장소 루트에서 `npm run resume`를 실행하고 이 파일 전체를 UTF-8로 다시 읽는다.
 - 현재 라이브 계약은 맨 아래의 가장 높은 버전 절이며, 역사 절과 충돌하면 최신 절이 우선한다. 현재 build 표식과 최신 절의 build가 다르면 작업을 완료했다고 말할 수 없다.
-- 완료 조건은 `npm test`만이 아니다. 현재 build의 기본 통합안 C에서 독립 실제 플레이 trace 2개가 있어야 하고, 주 개발 에이전트가 분석기 요약이 아닌 두 원본 JSON 전체 시간축을 직접 읽어야 한다.
-- 독립 플레이 URL에는 `reviewer=agent-fusion-a` / `reviewer=agent-fusion-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 A/B 두 조립 경로, 제한 요격 보상, 이동 빙설장, 온도를 보존하는 오답 탄막, 실제 피격, 실물 냉각이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
+- 완료 조건은 `npm test`만이 아니다. 현재 build의 A/B에서 독립 실제 플레이 trace가 하나씩 있어야 하고, 주 개발 에이전트가 분석기 요약이 아닌 두 원본 JSON 전체 시간축을 직접 읽어야 한다.
+- 독립 플레이 URL에는 A에 `reviewer=agent-storm-a`, B에 `reviewer=agent-storm-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 C의 두 조립 경로, 4기 요격기 성장과 실제 평타 발사, 수동 STORM 충전·시전, A의 방향 고정/B의 재조향, 온도 보존 오답 탄막, 실제 피격, 실물 냉각이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
 - A/B 재미와 게임필은 김록기만 판정한다. 에이전트는 trace 인과, 관측한 조작, 회귀 여부만 보고한다.
 - 김록기가 승인한 연출·규칙은 **잠금된 기준선**이다. 사용자가 명시적으로 폐지하거나 재실험 축으로 지정하기 전에는 새 수학·세계관·A/B 작업을 이유로 바꾸지 않는다. 새 요청은 명시된 축만 열며, 인접한 승인 요소를 교체할 권한으로 확대 해석하지 않는다.
 - 승인된 오답 탄막 기준선은 노란 열 표현이 같은 위치에서 붉게 무장되고, 속도 반대 방향의 11px 선형 꼬리와 원형 실루엣을 유지한 채 날아오는 v21 렌더다. v25에서 오답은 열장 tracer를 발사 원점으로 표본화할 뿐 권위 온도장과 tracer를 소비·초기화하지 않는다. 화살형을 다시 열거나 공통 색·발생 위치·220ms 예고·속도·잔상, 또는 오답 온도 보존을 바꾸려면 새 사용자 지시가 필요하다.
 - 점수 회수의 금색 다이아 실루엣·광량·35ms 간격·약 0.5초 가속 상승·도착별 count-up·마지막 HUD pulse는 build22의 잠금된 공통층이다. 현재 비교축은 도착 구도뿐이다: A는 실제 `score-bank` 중심으로 회수되는 control 복원, B는 기존 `27vw` 고정 도착점을 유지한다. 사용자 판정 전 한쪽을 다른 쪽으로 통일하지 않는다.
+- v26 A/B는 둘 다 v25 통합안 C의 레일/코어 교차 조립·열역학·오답 규칙을 그대로 쓴다. 열린 비교축은 시전 뒤 STORM 방향뿐이다: A는 고정, B는 재조향이다. Space는 타자 입력 리듬이므로 스킬 키로 쓰지 않는다.
 <!-- CURRENT_CONTRACT_END -->
 
 김록기(계정 Epicevent)의 개인 프로젝트. TOEFL 2026 Writing의 Build-a-Sentence(어순 재배열) 훈련을
@@ -423,3 +424,22 @@
   0.1 미만이어도 0으로 뭉개지지 않도록 heat integral/floor/max/source 값은 trace에서 소수 4자리로 보존한다.
   기본 C 완료 검증은 `reviewer=agent-fusion-a`와 `reviewer=agent-fusion-b`의 두 원본 세션을 주 개발 에이전트가 끝까지 읽고,
   `npm run verify:play`가 두 조립 경로·제한 요격·이동 빙설·온도 보존 오답·실제 피격·실물 냉각을 확인해야 한다.
+
+## v26 C 기반 수동 STORM A/B와 요격기 편대 성장 (2026-07-29)
+- `?ab=A`와 `?ab=B`는 모두 내부 gameplay variant C를 사용한다. 따라서 v25의 짝수 `direct_rail_slam`/홀수
+  `core_link`, 온도장을 보존하는 오답 탄막, 실제 충돌·냉각 계산은 공통이다. A/B의 유일한 STORM 비교축은 시전 뒤 방향이다.
+- 실물 정답 명중 3회로 `stormCharge` 3칸을 채운다. 자동 이동 시전은 제거한다. `Shift+ArrowLeft/Right`, 중앙 코어의
+  왼쪽/오른쪽 절반, 또는 STORM HUD의 왼쪽/오른쪽 절반으로 한 개의 장을 시전한다. Space는 항상 preventDefault 후
+  아무 동작도 하지 않는다. A의 활성 STORM은 발사 방향이 잠기며, B는 같은 입력으로 활성 장의 방향을 반전할 수 있다.
+  장은 초당 34px로 천천히 움직이고 수평 토러스 경계를 끊김 없이 이어서 렌더한다. 한 번에 활성 장은 하나뿐이다.
+- 실물 명중으로 호위기는 `0→1→2→3→4`기까지 증가한다. 위치는 본체의 오른쪽 안쪽, 왼쪽 안쪽, 오른쪽 바깥쪽,
+  왼쪽 바깥쪽 순서이며 좌우 최대 2기씩이다. 각 기체는 장식용 다포신이 아니라 실제 평타 발사점 하나를 가진다.
+  MK-I~MK-V는 한 글자당 본체+현재 호위기 수만큼 미사일을 보여 주며 실제 문법 판정 피해는 여전히 1회라 밸런스 수치를
+  몰래 올리지 않는다. 도킹은 260ms 백색 화면 플래시, 16방향 광선, 이중 충격파, 입자, 진동으로 즉시 보상한다.
+- 완성된 짧은 청크가 긴 청크의 접두사와 겹치면 완전일치 청크를 우선한다. `thetime`은 `the time completing it`이
+  살아 있어도 `the time`만 focus하고 Tab으로 확정할 수 있어야 한다.
+- trace meta build는 `torus-26`, pipeline은 8이다. `base_variant:'C'`와 실제 `ab_variant`를 함께 남긴다.
+  `scene.wakeFields`는 `vx/direction`, `scene.reward`는 STORM charge·도킹 flash 잔여시간/중심, missile은
+  `origin_kind`를 보존한다. `storm_charge`, `storm_cast`, `storm_steer`, `storm_cast_blocked`, 확장된 `wing_deploy`가
+  입력과 시각 상태를 같은 시간축에 남긴다. 완료 검증은 A의 `reviewer=agent-storm-a`와 B의
+  `reviewer=agent-storm-b` 원본 세션을 주 개발 에이전트가 직접 읽고 `npm run verify:play`를 통과해야 한다.

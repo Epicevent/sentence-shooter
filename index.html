@@ -42,8 +42,12 @@
   #h-score { display: inline-block; min-width: 4.5em; text-align: right; font-size: 14px; }
   #h-score-goal { color: var(--dim); font-size: 9px; }
   #h-progress { color:var(--bright); letter-spacing:1px; }
-  #h-resource { display:flex; align-items:center; gap:7px; color:var(--dim); }
+  #h-resource { display:flex; align-items:center; gap:7px; color:var(--dim); border:1px solid transparent;
+    padding:2px 5px; transition:border-color .12s,box-shadow .12s,color .12s; }
   #h-resource b { color:var(--bright); }
+  #h-resource.skill-ready { color:var(--bright); border-color:rgba(94,230,223,.58); cursor:pointer;
+    box-shadow:0 0 12px rgba(94,230,223,.2),inset 0 0 8px rgba(94,230,223,.08); }
+  #h-resource.skill-active { border-color:rgba(189,184,255,.38); cursor:pointer; }
   #h-weapon { color:var(--gold); letter-spacing:2px; font-size:10px; }
   #h-hazard { color:#fff0f2; background:rgba(209,105,105,.25); border:1px solid var(--danger);
     padding:2px 7px; letter-spacing:2px; animation:hazardpulse .42s steps(2) infinite; }
@@ -198,37 +202,25 @@ const AB_CONFIG = (() => {
   } catch(e) { return { variant:'C', seed:20260728, reviewer:null }; }
 })();
 const AB_VARIANT = AB_CONFIG.variant, AB_SEED = AB_CONFIG.seed;
-const BUILD_ID = 'torus-25';
-const AB_CONCEPT = AB_VARIANT === 'A' ? 'heavy_interceptor_rail_slam' : AB_VARIANT === 'B'
-  ? 'blizzard_core_link' : 'fusion_rail_blizzard';
-if (document.body) document.body.dataset.variant = AB_VARIANT;
+const BUILD_ID = 'torus-26';
+const AB_CONCEPT = AB_VARIANT === 'A' ? 'fusion_fixed_drift_storm' : AB_VARIANT === 'B'
+  ? 'fusion_steerable_drift_storm' : 'fusion_rail_blizzard_control';
+if (document.body) document.body.dataset.variant = 'C';
+if (document.body) document.body.dataset.experiment = AB_VARIANT;
 if (document.body) document.body.dataset.concept = AB_CONCEPT;
-document.getElementById('start-mode').textContent = AB_VARIANT==='C' ? 'FUSION BUILD' : 'TEST ' + AB_VARIANT;
-document.getElementById('start-title').textContent = AB_VARIANT === 'A' ? 'HEAVY INTERCEPT' : AB_VARIANT === 'B' ? 'BLIZZARD FIELD' : 'THERMAL FUSION';
-document.getElementById('start-rules').innerHTML = AB_VARIANT === 'A'
-  ? 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; each real impact slams the chunk into the answer rail.<br>' +
-    'correct hits dock one heavy escort. a mistake arms the heat around you.<br>' +
-    '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b>'
-  : AB_VARIANT === 'B' ? 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; each real impact links the chunk through the core.<br>' +
-    'correct hits charge a blizzard. move to cast it; a mistake arms the heat around you.<br>' +
+document.getElementById('start-mode').textContent = AB_VARIANT==='C' ? 'FUSION CONTROL' : 'FUSION TEST ' + AB_VARIANT;
+document.getElementById('start-title').textContent = AB_VARIANT === 'A' ? 'DRIFT STORM' : AB_VARIANT === 'B' ? 'STEER STORM' : 'THERMAL FUSION';
+document.getElementById('start-rules').innerHTML = AB_VARIANT === 'C'
+  ? 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; impacts alternate rail slam and core link.<br>' +
+    'correct hits grow the escort formation and charge the current movement-blizzard control.<br>' +
     '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b>'
   : 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; impacts alternate rail slam and core link.<br>' +
-    'correct hits earn limited escort cover and charge a movement blizzard. clears cool the world.<br>' +
+    'three real hits ready one storm. <b>SHIFT+←/→</b> casts it; '+(AB_VARIANT==='B'?'press again to steer.':'its direction stays locked.')+'<br>' +
     '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b>';
 document.getElementById('h-variant').textContent = AB_VARIANT;
-if(AB_VARIANT==='B'){
-  document.getElementById('h-combat-label').textContent='STORM';
-  document.getElementById('h-combo').textContent='0/9';
-  document.getElementById('h-weapon').textContent='○○○○○○○○○';
-}else if(AB_VARIANT==='A'){
-  document.getElementById('h-combat-label').textContent='ESCORT';
-  document.getElementById('h-combo').textContent='0/1';
-  document.getElementById('h-weapon').textContent='●○○○';
-}else{
-  document.getElementById('h-combat-label').textContent='FUSION';
-  document.getElementById('h-combo').textContent='E0 · S0';
-  document.getElementById('h-weapon').textContent='○○○ · ○○○';
-}
+document.getElementById('h-combat-label').textContent='FUSION';
+document.getElementById('h-combo').textContent=AB_VARIANT==='C'?'W0 · S0':'W0 · U0/3';
+document.getElementById('h-weapon').textContent='○○○○ · ○○○';
 const ITEMS = [
   { id:'decision', ask:"Why hasn't the committee announced its decision?", lead:'They', tail:'.',
     answer:['are waiting','for the chair','to review','the final report'], decoys:['waited'] },
@@ -441,7 +433,7 @@ const sfx = {
 function buzz(ms){ try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e){} }
 
 // ---------- game state ----------
-const WEAPONS = ['MK-I', 'MK-II', 'MK-III', 'MK-IV'];
+const WEAPONS = ['MK-I', 'MK-II', 'MK-III', 'MK-IV', 'MK-V'];
 let g = null;
 let loopStarted = false;
 const moveInput = { left:false, right:false };
@@ -460,25 +452,28 @@ function traceStart(mode){
   for (const b of activeTraceBanners.values()) b.el.remove();
   activeTraceBanners.clear();
   TRACE.meta = {
-    started: performance.now(), mode, pipeline: 7, ua: navigator.userAgent.slice(0, 60),
-    w: W, h: H, dpr, at: Date.now(), hz: 8, build:BUILD_ID, ab_variant:AB_VARIANT, ab_seed:AB_SEED,
+    started: performance.now(), mode, pipeline: 8, ua: navigator.userAgent.slice(0, 60),
+    w: W, h: H, dpr, at: Date.now(), hz: 8, build:BUILD_ID, base_variant:'C', ab_variant:AB_VARIANT, ab_seed:AB_SEED,
     reviewer:AB_CONFIG.reviewer,
     session_id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
     ab_concept:AB_CONCEPT,
     // Compact scene rows retain enough state to reconstruct/query the changing playfield.
     word_fields: ['order','render_x','render_y','w','h','hp','maxhp','consumed','committed','flags','block_vis','text_vis','banner_cover','alpha','logic_y','recoil_ms','logic_x','rage'],
-    missile_fields: ['x','y','vx','vy','target_order','dmg','letter','weapon_level','speed'],
+    missile_fields: ['x','y','vx','vy','target_order','dmg','letter','weapon_level','speed','origin_kind'],
     escort_shot_fields: ['x','y','vx','vy','target_x','target_y'],
     particle_fields: ['x','y','vx','vy','life_ms','age_ms','color','text'],
     pulse_fields: ['x','y','radius','max_radius','life_ms','age_ms','color'],
     pressure_wave_fields: ['id','x','y','width','age_ms','life_ms','guns'],
     quench_burst_fields: ['id','x','y','radius','max_radius','age_ms','life_ms','strength','reason','cells'],
     heat_arrow_fields: ['id','x','y','vx','vy','age_ms','arm_ms','life_ms','heat','silhouette','chill','source_x','source_y'],
+    wake_field_fields: ['id','x','y','radius','age_ms','life_ms','rpm','contacts','vx','direction'],
     assembly_flight_fields: ['id','order','route','source_x','source_y','target_x','target_y','age_ms','duration_ms'],
     interceptor_fields: ['x','y','vx','vy','target_id','age_ms','life_ms'],
     heat_field_fields: ['tracer_count','integral','floor_local','volley_count','max_temp','sim_steps','step_us','max_step_us'],
     floor_bin_fields: ['left_to_right_local_heat'],
     banner_fields: ['id','text','gold','x','y','w','h','opacity'],
+    reward_fields: ['wing_units','wake_nodes','combat_started','combat_armed','normal_origins','storm_power',
+      'escort_ammo','storm_charge','reward_flash_ms','experiment','reward_flash_x','reward_flash_y'],
     ui_fields: ['score','weapon_level','built_line','message','game_over'],
     scene_fields: ['i','freeze_ms','danger','viewport_paused','pressure_y','recoil_bank',
       'delivery_ms','cargo_order','dock_x','jam_ms','move_dir','ship','lock','inventory',
@@ -710,7 +705,8 @@ function traceScene(now){
       Math.max(0, Math.round(RECOIL_MS - (now - (w.recoilAt || 0)))), roundTrace(w.x), w.rage || 0];
   });
   const missiles = g.missiles.map(m => [roundTrace(m.x), roundTrace(m.y), roundTrace(m.vx), roundTrace(m.vy),
-    m.target ? m.target.order : null, m.dmg || 0, m.letter || '',m.level||1,roundTrace(m.speed||missileSpeed(m.level||1))]);
+    m.target ? m.target.order : null, m.dmg || 0, m.letter || '',m.level||1,
+    roundTrace(m.speed||missileSpeed(m.level||1)),m.origin||'player']);
   const escortShots = (g.escortShots || []).map(s => [roundTrace(s.x),roundTrace(s.y),
     roundTrace(s.vx),roundTrace(s.vy),roundTrace(s.tx),roundTrace(s.ty)]);
   const particles = g.parts.map(p => [roundTrace(p.x), roundTrace(p.y), roundTrace(p.vx), roundTrace(p.vy),
@@ -733,7 +729,8 @@ function traceScene(now){
   const interceptorShots=(g.interceptorShots||[]).map(s=>[roundTrace(s.x),roundTrace(s.y),roundTrace(s.vx),roundTrace(s.vy),
     s.target?s.target.id:null,Math.round(s.t*1000),Math.round(s.life*1000)]);
   const wakeFields=(g.wakeNodes||[]).map(node=>[node.id,roundTrace(node.x),roundTrace(node.y),roundTrace(node.radius),
-    Math.round(node.t*1000),Math.round(node.life*1000),roundTrace(node.rpm),node.marks||0]);
+    Math.round(node.t*1000),Math.round(node.life*1000),roundTrace(node.rpm),node.marks||0,
+    roundTrace(node.vx||0),Math.sign(node.vx||node.direction||0)]);
   const assemblyFlights=(g.assemblyFlights||[]).map(f=>[f.id,f.order,f.route,roundTrace(f.sourceX),roundTrace(f.sourceY),
     roundTrace(f.targetX),roundTrace(f.targetY),Math.max(0,Math.round(now-(f.startedAt||now))),f.duration]);
   return {
@@ -749,7 +746,9 @@ function traceScene(now){
     inv: [0, 0, g.lives, g.combo],
     sync:Math.round(g.sync||0),
     reward:[g.wingUnits||0,(g.wakeNodes||[]).length,g.combatStarted?1:0,
-      g.combatStarted?1:0,heavyWeaponOrigins().length,g.coolerLevel||0,g.escortAmmo||0],
+      g.combatStarted?1:0,heavyWeaponOrigins().length,g.coolerLevel||0,g.escortAmmo||0,
+      g.stormCharge||0,Math.max(0,Math.round((g.rewardFlashUntil||0)-now)),g.experiment||'C',
+      roundTrace(g.rewardFlashX||0),roundTrace(g.rewardFlashY||0)],
     words, missiles, escortShots, particles, pulses,
     heat, floorBins, pressureWaves, quenchBursts, heatArrows, interceptorShots, wakeFields, assemblyFlights,
     banners, shake: $('wrap').classList.contains('shake') ? 1 : 0,
@@ -819,14 +818,13 @@ if(typeof setInterval==='function') setInterval(()=>traceCheckpoint(false),1000)
 
 function weaponLv(combo,variant){
   const liveVariant=variant || (g && g.variant) || AB_VARIANT;
-  if(liveVariant==='C') return 1;
+  if(liveVariant==='C') return 1+Math.min(4,(g&&g.wingUnits)||0);
   if(liveVariant==='B') return 1+Math.min(3,Math.floor(((g&&g.coolerLevel)||0)/3));
-  // One heavy escort carries three visible barrels. Docking that one craft restores
-  // the old player-plus-three-muzzle fire volume without rebuilding a mini-fleet.
+  // Legacy A remains readable in old replay fixtures; live A/B both enter via C.
   return 1+Math.min(3,((g&&g.wingUnits)||0)*3);
 }
-function missileSpeed(level){ return 560+Math.max(1,Math.min(4,level||weaponLv()))*70; }
-function volleyGap(level){ return [0,.09,.075,.06,.045][Math.max(1,Math.min(4,level||weaponLv()))]; }
+function missileSpeed(level){ return 560+Math.max(1,Math.min(5,level||weaponLv()))*70; }
+function volleyGap(level){ return [0,.09,.075,.06,.05,.04][Math.max(1,Math.min(5,level||weaponLv()))]; }
 function startGame(mode){
   resize();
   g = {
@@ -842,11 +840,12 @@ function startGame(mode){
     speed: 12, eff: 12, builtDrawn: '', visualAttached:[], assemblyFlights:[], assemblySeq:0,
     assemblyFlashOrder:-1, assemblyFlashUntil:0, viewportPaused: false, viewportPauseAt: 0,
     messageBeforePause: null, over: false, lastT: performance.now(), t0: 0,
-    waveGraceUntil:0, variant:AB_VARIANT, recoilBank:0,
+    waveGraceUntil:0, variant:'C', experiment:AB_VARIANT, recoilBank:0,
     visualPhase:0, sync:0, grazes:0, coreBursts:0, pendingSentenceClear:false,
-    wingUnits:0, escortAmmo:0, coolerLevel:0, wakeNodes:[], heatArrows:[], interceptorShots:[], shotSeq:0, combatStarted:false,
+    wingUnits:0, escortAmmo:0, coolerLevel:0, stormCharge:0, wakeNodes:[], heatArrows:[], interceptorShots:[], shotSeq:0, combatStarted:false,
     heat:createHeatField(), heatEmitT:0, pressureWaves:[], pressureWaveSeq:0, quenchBursts:[], quenchBurstSeq:0, wakeDropT:0, interceptT:0,
     scoreDisplay:0, scoreMilestone:1500, scoreTier:0, scoreMotes:[],
+    rewardFlashAt:0, rewardFlashUntil:0, rewardFlashX:W/2, rewardFlashY:H-34,
   };
   moveInput.left = false; moveInput.right = false;
   for (let i = 0; i < 44; i++)
@@ -854,7 +853,8 @@ function startGame(mode){
   $('start').classList.add('hidden');
   $('over').classList.add('hidden');
   $('prompt').classList.remove('hidden');
-  $('msg').textContent = 'TYPE A CHUNK · TAB TO CONFIRM · ← → DODGE';
+  $('msg').textContent = AB_VARIANT==='C' ? 'TYPE A CHUNK · TAB TO CONFIRM · ← → DODGE'
+    : 'TYPE A CHUNK · TAB TO CONFIRM · SHIFT+←/→ STORM';
   traceStart(g.mode);
   seedDust(HEAT_TRACER_COUNT);
   tEv('field_start', { build:BUILD_ID, topology:'torus', vertical_period_screens:TORUS_VERTICAL_SCREENS,
@@ -872,8 +872,9 @@ function startGame(mode){
 // significant characters (typed); punctuation like commas/periods auto-fires
 const SIG = /[a-z0-9'-]/i;
 const MISS_BURST_MS = 220;  // one mistyped word should not become one punishment per letter
-// A is a pilot plus one unmistakable heavy escort, never a cluttered mini-fleet.
-const MAX_WING_UNITS = 1;
+// Combo impacts grow a symmetric formation: two escorts on each side.
+const MAX_WING_UNITS = 4;
+const STORM_READY_HITS = 3, STORM_DRIFT_SPEED = 34;
 const HEAT_GRID_X = 64, HEAT_GRID_Y = 40, HEAT_SIM_DT = 1/30, HEAT_KAPPA = .00125;
 const HEAT_SINK_CAP = 12;
 const TORUS_VERTICAL_SCREENS = 1, HEAT_TRACER_COUNT = 180, HEAT_ARROW_ARM_MS = 220;
@@ -894,21 +895,21 @@ function variantConcept(variant){ const live=variant || (g&&g.variant) || AB_VAR
   ? 'heavy_interceptor_rail_slam' : live==='B' ? 'blizzard_core_link' : 'fusion_rail_blizzard'; }
 function hasEscort(variant){ return (variant || (g&&g.variant) || AB_VARIANT)!=='B'; }
 function hasStorm(variant){ return (variant || (g&&g.variant) || AB_VARIANT)!=='A'; }
+function isStormTrial(){ return !!g && (g.experiment==='A'||g.experiment==='B'); }
 function armCombat(reason){
   if(!g || g.combatStarted) return;
   g.combatStarted=true;
   tEv('combat_arm',{ reason, read_ms:Math.max(0,Math.round(performance.now()-g.t0)) });
 }
 function wingPositions(count){
-  const slots=[[54,-1]];
+  const inner=Math.max(34,Math.min(54,W*.12)),outer=Math.max(inner+24,Math.min(96,W*.22));
+  const slots=[[inner,-1],[-inner,-1],[outer,-8],[-outer,-8]];
   return slots.slice(0,Math.max(0,count===undefined?(g&&g.wingUnits||0):count))
     .map((slot,index)=>({ x:Math.max(24,Math.min(W-24,(g?g.ship.x:W/2)+slot[0])), y:H-34+slot[1], index }));
 }
 function heavyWeaponOrigins(){
-  const origins=[{x:g.ship.x,y:H-46,kind:'player'}],escort=wingPositions(1)[0];
-  if((g.wingUnits||0)>0&&escort){
-    for(const dx of[-12,0,12])origins.push({x:escort.x+dx,y:escort.y-12-Math.abs(dx)*.12,kind:'escort'});
-  }
+  const origins=[{x:g.ship.x,y:H-46,kind:'player'}];
+  for(const escort of wingPositions())origins.push({x:escort.x,y:escort.y-22,kind:'escort',index:escort.index});
   return origins;
 }
 function createHeatField(){
@@ -1251,7 +1252,10 @@ function fireInterceptor(target){
 }
 function updateHeatCombat(dt){
   const shipX0=Number.isFinite(g.ship.combatX)?g.ship.combatX:g.ship.x,shipX1=g.ship.x,shipY=H-34;
-  for(const node of(g.wakeNodes||[]))node.t+=dt;
+  for(const node of(g.wakeNodes||[])){
+    node.t+=dt;
+    if(node.vx)node.x=torusWrap(node.x+node.vx*dt,W);
+  }
   g.wakeNodes=(g.wakeNodes||[]).filter(node=>node.t<node.life);
   const launched=(g.heatArrows||[]).filter(a=>!a.dead&&a.age>=a.arm);
   if(hasEscort(g.variant)&&launched.length&&(g.variant==='A'||(g.escortAmmo||0)>0)){
@@ -1460,7 +1464,7 @@ function nextSentence(){
 }
 
 function updateReserveHud(){
-  const label = g.variant;
+  const label = isStormTrial() ? g.experiment : g.variant;
   if ($('h-variant').textContent !== label) $('h-variant').textContent = label;
 }
 
@@ -1480,12 +1484,15 @@ function updateHud(){
   else if(scoreBank.style) scoreBank.style['--score-fill']=scoreFill+'%';
   const attached=attachedReplyCount();
   $('h-progress').textContent = attached + ' / ' + g.sentence.length;
-  $('h-combat-label').textContent = g.variant==='A' ? 'ESCORT' : g.variant==='B' ? 'STORM' : 'FUSION';
-  $('h-combo').textContent = g.variant==='A' ? (g.wingUnits||0) + '/1' : g.variant==='B' ? (g.coolerLevel||0) + '/9'
-    : 'E'+(g.escortAmmo||0)+' · S'+(g.coolerLevel||0);
-  const guns=heavyWeaponOrigins().length;
-  $('h-weapon').textContent = g.variant==='A' ? resourcePips(guns,4) : g.variant==='B' ? resourcePips(g.coolerLevel||0,9)
-    : resourcePips(g.escortAmmo||0,3)+' · '+resourcePips(Math.ceil((g.coolerLevel||0)/3),3);
+  $('h-combat-label').textContent = isStormTrial() ? 'FUSION '+g.experiment : 'FUSION';
+  $('h-combo').textContent = isStormTrial()
+    ? 'W'+(g.wingUnits||0)+' · U'+(g.stormCharge||0)+'/'+STORM_READY_HITS
+    : 'W'+(g.wingUnits||0)+' · S'+(g.coolerLevel||0);
+  $('h-weapon').textContent = resourcePips(g.wingUnits||0,MAX_WING_UNITS)+' · '+
+    resourcePips(isStormTrial()?g.stormCharge||0:Math.ceil((g.coolerLevel||0)/3),STORM_READY_HITS);
+  const skillReady=isStormTrial()&&(g.stormCharge||0)>=STORM_READY_HITS&&!(g.wakeNodes||[]).length;
+  $('h-resource').classList.toggle('skill-ready',skillReady);
+  $('h-resource').classList.toggle('skill-active',isStormTrial()&&(g.wakeNodes||[]).length>0);
   const density=dustBand();
   $('h-dust').innerHTML = '<b>' + density.temp.toFixed(2) + '</b>';
   const hostile=dustHazardActive();
@@ -1676,18 +1683,24 @@ function deployWingGun(word,x,y,options){
     g.wingUnits=before+1;
     const pos=wingPositions().slice(-1)[0]||{x:g.ship.x,y:H-34},dx=pos.x-x,dy=pos.y-y,d=Math.hypot(dx,dy)||1;
     g.escortShots.push({x,y,vx:dx/d*680,vy:dy/d*680,tx:pos.x,ty:pos.y,t:0,life:Math.max(.28,d/680),color:'#d7ba7d'});
-    spawnParts(pos.x,pos.y,10,'#9fe9fb',95);addPulse(pos.x,pos.y,38,'#73d5ee',.28);
+    for(const vx of[-140,0,140])g.escortShots.push({x:pos.x,y:pos.y-19,vx,vy:-900,tx:pos.x+vx*.18,ty:pos.y-170,t:0,life:.34,color:'#fff4b8'});
+    spawnParts(x,y,18,'#fff4b8',210);spawnParts(pos.x,pos.y,28,'#9fe9fb',175);spawnParts(pos.x,pos.y,12,'#d7ba7d',115);
+    addPulse(x,y,78,'#fff4b8',.24);addPulse(pos.x,pos.y,54,'#e8ffff',.22);addPulse(pos.x,pos.y,96,'#73d5ee',.46);
+    g.rewardFlashAt=performance.now();g.rewardFlashUntil=g.rewardFlashAt+260;
+    g.rewardFlashX=pos.x;g.rewardFlashY=pos.y;shake();buzz([16,22,34]);
   }
   const fired=fireWingSalvo({name:before<MAX_WING_UNITS?'wing_dock':'full_formation',combo:word.impactCombo||1},
     {maxOrigins:options.limited?1:undefined});
   const weaponAfter=weaponLv();
-  if(weaponAfter!==weaponBefore){
-    banner('HEAVY ESCORT DOCKED · '+WEAPONS[weaponAfter-1],true); sfx.up();
+  if(before<MAX_WING_UNITS){
+    banner('ESCORT '+g.wingUnits+'/'+MAX_WING_UNITS+' · '+WEAPONS[weaponAfter-1],true); sfx.up();
     tEv('weapon_up',{ before:weaponBefore,after:weaponAfter,name:WEAPONS[weaponAfter-1],source:'physical_wing' });
   }
-  popText(g.ship.x,H-82,(before<MAX_WING_UNITS?'HEAVY ESCORT DOCKED':'HEAVY SALVO')+' · '+fired+' BARRELS','#9fe9fb');
+  popText(g.ship.x,H-82,(before<MAX_WING_UNITS?'ESCORT FORMATION '+g.wingUnits+'/'+MAX_WING_UNITS:'FORMATION SALVO')+
+    ' · '+heavyWeaponOrigins().length+' MUZZLES','#9fe9fb');
   tEv('wing_deploy',{ order:word.order,before,after:g.wingUnits,full:before>=MAX_WING_UNITS,
-    craft:1+g.wingUnits,barrels:heavyWeaponOrigins().length,cooling_waves:fired,x:roundTrace(x),y:roundTrace(y) });
+    craft:1+g.wingUnits,barrels:heavyWeaponOrigins().length,cooling_waves:fired,x:roundTrace(x),y:roundTrace(y),
+    reward_flash_ms:before<MAX_WING_UNITS?260:0,normal_fire_origins:heavyWeaponOrigins().length });
   return before<MAX_WING_UNITS?'heavy_interceptor':'heavy_salvo';
 }
 function shatterWing(reason){
@@ -1699,7 +1712,7 @@ function shatterWing(reason){
   popText(g.ship.x,H-70,'WING LOST ×'+count,'#f08b8b');
   return count;
 }
-function addWakeNode(x,rpm,reason){
+function addWakeNode(x,rpm,reason,direction){
   const radius=148+Math.min(9,rpm)*18;
   const existing=(g.wakeNodes||[]).find(node=>torusDxPx(node.x,x)<54&&torusDyPx(node.y,H-48)<54);
   if(existing){
@@ -1707,17 +1720,19 @@ function addWakeNode(x,rpm,reason){
     tEv('wake_refresh',{id:existing.id,x:roundTrace(existing.x),rpm:roundTrace(existing.rpm),reason:reason||'move'});
     return existing;
   }
+  const dir=Math.sign(direction||0);
   const node={id:(g.fieldSeq=(g.fieldSeq||0)+1),x:torusWrap(x,W),y:H-48,t:0,
-    life:23+Math.min(9,rpm)*.8,radius,rpm,spin:Math.random()*Math.PI*2,marks:0};
+    life:23+Math.min(9,rpm)*.8,radius,rpm,spin:Math.random()*Math.PI*2,marks:0,
+    direction:dir,vx:dir*STORM_DRIFT_SPEED};
   g.wakeNodes.push(node);
   if(g.wakeNodes.length>5)g.wakeNodes.shift();
   tEv('wake_node',{id:node.id,x:roundTrace(node.x),radius:roundTrace(node.radius),life_ms:Math.round(node.life*1000),
-    rpm:roundTrace(rpm),reason:reason||'move'});
+    rpm:roundTrace(rpm),reason:reason||'move',direction:dir,vx:roundTrace(node.vx)});
   return node;
 }
 function castWakeFromMovement(beforeX,afterX,dt,immediate){
   const movedPx=Math.abs(afterX-beforeX);
-  if(!hasStorm(g.variant)||movedPx<=.25||g.coolerLevel<=0)return null;
+  if(isStormTrial()||!hasStorm(g.variant)||movedPx<=.25||g.coolerLevel<=0)return null;
   g.wakeDropT-=Math.max(0,dt||0);
   const rpm=1+Math.min(9,g.coolerLevel)*.18;
   if(immediate||g.wakeDropT<=0){
@@ -1734,11 +1749,49 @@ function boostWakeDrive(word,x,y){
   g.coolerLevel=Math.max(before,Math.min(9,combo));
   const rpm=1+g.coolerLevel*.18,radius=148+Math.min(9,rpm)*18;
   addPulse(g.ship.x,H-48,radius*.72,'#79e8e2',.42);
+  if(isStormTrial()){
+    const chargeBefore=g.stormCharge||0;
+    g.stormCharge=Math.min(STORM_READY_HITS,chargeBefore+1);
+    const ready=g.stormCharge>=STORM_READY_HITS;
+    popText(g.ship.x,H-102,ready?'STORM READY · SHIFT+←/→':'STORM CHARGE '+g.stormCharge+'/'+STORM_READY_HITS,'#b5fffa');
+    tEv('storm_charge',{order:word.order,combo,before:chargeBefore,after:g.stormCharge,power:g.coolerLevel,ready});
+    tEv('wake_drive',{order:word.order,id:null,rpm:roundTrace(rpm),combo,before,after:g.coolerLevel,
+      radius:roundTrace(radius),movement_only:false,manual_skill:true,charge:g.stormCharge});
+    tone(460,900,.11,'sine',.045);
+    return 'storm_skill_charge';
+  }
   popText(g.ship.x,H-102,'BLIZZARD CHARGED · MOVE TO CAST · RPM '+rpm.toFixed(1),'#b5fffa');
   tEv('wake_drive',{order:word.order,id:null,rpm:roundTrace(rpm),combo,before,after:g.coolerLevel,
     radius:roundTrace(radius),movement_only:true});
   tone(460,900,.11,'sine',.045);
   return 'blizzard_charge';
+}
+function castStorm(direction,source){
+  if(!g||g.over||g.viewportPaused||!isStormTrial())return null;
+  const dir=Math.sign(direction||0)||1,active=(g.wakeNodes||[]).find(node=>node.t<node.life);
+  if(active){
+    if(g.experiment==='B'){
+      const before=Math.sign(active.vx||active.direction||0);
+      active.direction=dir;active.vx=dir*STORM_DRIFT_SPEED;
+      tEv('storm_steer',{id:active.id,before,after:dir,vx:roundTrace(active.vx),source:source||'input',scene:traceScene()});
+      popText(active.x,active.y-active.radius*.62,dir<0?'STORM DRIFT ←':'STORM DRIFT →','#b5fffa');
+      tone(680,420,.07,'sine',.035);updateHud();return active;
+    }
+    tEv('storm_cast_blocked',{reason:'active_fixed',direction:dir,source:source||'input',scene:traceScene()});
+    $('msg').textContent='STORM ACTIVE · A locks its launch direction';sfx.plink();return null;
+  }
+  if((g.stormCharge||0)<STORM_READY_HITS){
+    tEv('storm_cast_blocked',{reason:'not_ready',charge:g.stormCharge||0,direction:dir,source:source||'input',scene:traceScene()});
+    $('msg').textContent='STORM '+(g.stormCharge||0)+'/'+STORM_READY_HITS+' · land real hits to charge';sfx.plink();return null;
+  }
+  const power=Math.max(1,g.coolerLevel||1),rpm=1+Math.min(9,power)*.18;
+  const node=addWakeNode(g.ship.x,rpm,'skill_cast',dir);
+  const spent=g.stormCharge;g.stormCharge=0;g.coolerLevel=0;
+  addPulse(node.x,node.y,node.radius*.92,'#e8ffff',.5);spawnParts(node.x,node.y,22,'#b5fffa',150);
+  banner(dir<0?'STORM CAST ←':'STORM CAST →',true);tone(260,980,.18,'sawtooth',.07);buzz([18,24,18]);
+  tEv('storm_cast',{id:node.id,direction:dir,vx:roundTrace(node.vx),rpm:roundTrace(rpm),power,spent,
+    source:source||'input',steerable:g.experiment==='B',scene:traceScene()});
+  updateHud();return node;
 }
 function empowerEnemy(word){
   if(!word || !g.words.includes(word) || word.settled) return 0;
@@ -1755,9 +1808,10 @@ function grantPhysicalReward(word,x,y){
   if(g.variant==='A')return deployWingGun(word,x,y);
   if(g.variant==='B')return boostWakeDrive(word,x,y);
   const rail=deployWingGun(word,x,y,{limited:true});
-  g.escortAmmo=Math.min(3,(g.escortAmmo||0)+1);
+  g.escortAmmo=Math.min(MAX_WING_UNITS,(g.escortAmmo||0)+1);
   const storm=boostWakeDrive(word,x,y);
-  tEv('fusion_reward',{order:word.order,rail,storm,escort_ammo:g.escortAmmo,storm_level:g.coolerLevel});
+  tEv('fusion_reward',{order:word.order,rail,storm,escort_ammo:g.escortAmmo,storm_level:g.coolerLevel,
+    storm_charge:g.stormCharge||0,wing_units:g.wingUnits,normal_fire_origins:heavyWeaponOrigins().length});
   return 'fusion_charge';
 }
 
@@ -1820,7 +1874,7 @@ function applyWrongPenalty(chosen, detail){
   const floorHeat=triggerDustHazard(chain,chosen);
   const scoreLost=rules.wrongScoreBase+Math.max(0,chain-1)*rules.wrongScoreChain;
   g.typePrefix = ''; g.plinks++; g.combo = 0; g.perfect = false;
-  if(hasStorm(g.variant)){g.sync=0;g.coolerLevel=0;}
+  if(hasStorm(g.variant)){g.sync=0;g.coolerLevel=0;g.stormCharge=0;}
   const actualScoreLost=loseScore(scoreLost,chosen?wordVisualX(chosen)+chosen.w/2:g.ship.x,
     chosen?wordVisualY(chosen):H-62,'wrong');
   const lunge = 0;
@@ -1869,7 +1923,13 @@ function tapAt(x, y){
       return Math.hypot(x-ax,y-ay)-Math.hypot(x-bx,y-by);
     })[0];
   }
-  if (!w) return;
+  if (!w){
+    const core=signalCore();
+    if(isStormTrial()&&!core.hidden&&Math.hypot(x-core.x,y-core.y)<=core.r+14){
+      castStorm(x<core.x?-1:1,'core');
+    }
+    return;
+  }
   w = equivalentTarget(w);
   armCombat('tap_answer');
   tEv('tap_input', { x: roundTrace(x), y: roundTrace(y), order: w.order, w: w.text,
@@ -1891,11 +1951,12 @@ function launchMissile(target, dmg, letter, level){
     ? heavyWeaponOrigins()
     : [{x:g.ship.x,y:H-46}];
   const origin=origins[(g.shotSeq++)%origins.length];
+  addPulse(origin.x,origin.y-8,12+level*2,origin.kind==='escort'?'#fff4b8':'#9fe9fb',.09);
   g.missiles.push({
     x: origin.x + (Math.random()*8 - 4), y: origin.y,
     vx: (Math.random()*2 - 1) * 260,          // flare out sideways...
     vy: -220 - Math.random()*120,             // ...then curve into the target
-    target, dmg, letter, level, speed:missileSpeed(level),
+    target, dmg, letter, level, speed:missileSpeed(level), origin:origin.kind,
   });
 }
 
@@ -1969,7 +2030,11 @@ function focusCandidates(prefix){
   return g.words.filter(w=>!w.resolved && typingForm(w.text).startsWith(normalized));
 }
 function focusSelection(prefix){
-  const candidates=focusCandidates(prefix);
+  const prefixCandidates=focusCandidates(prefix),normalized=String(prefix||'').toLowerCase();
+  // A complete short chunk must beat a longer chunk that merely shares its prefix.
+  // Otherwise "the time" can never be selected while "the time completing it" is alive.
+  const exact=prefixCandidates.filter(w=>typingForm(w.text)===normalized);
+  const candidates=exact.length?exact:prefixCandidates;
   const forms=[...new Set(candidates.map(w=>choiceIdentity(w.text)))];
   if (forms.length!==1) return { candidates, forms, chosen:null };
   const target=g.words.find(w=>!w.resolved&&w.order===g.idx);
@@ -2164,7 +2229,7 @@ function loseLife(word){
   sfx.hit(); buzz(120); shake();
   g.lives--; g.combo = 0;
   if(hasEscort(g.variant)){shatterWing('breach');g.escortAmmo=0;}
-  if(hasStorm(g.variant)){g.coolerLevel=0;g.wakeNodes=[];g.sync=0;}
+  if(hasStorm(g.variant)){g.coolerLevel=0;g.stormCharge=0;g.wakeNodes=[];g.sync=0;}
   spawnParts(g.ship.x, H - 40, 20, '#d16969', 200);
   if (g.lives <= 0){
     tEv('life_lost', { order:word.order, w: word.text, left: g.lives, before, after: traceScene(transitionAt) });
@@ -2222,7 +2287,7 @@ function update(dt){
     g.ship.manualUntil = now+180;
   }
   const movedPx=Math.abs(g.ship.x-shipBeforeX);
-  if(movedPx>.25)castWakeFromMovement(shipBeforeX,g.ship.x,dt,false);
+  if(movedPx>.25&&!isStormTrial())castWakeFromMovement(shipBeforeX,g.ship.x,dt,false);
   else g.wakeDropT=Math.min(g.wakeDropT,.04);
   g.visualPhase += dt*.9;
   const deadline = H - 64, rawStep = descentActive && siege ? eff * dt : 0;
@@ -2370,6 +2435,28 @@ function signalCore(){
   return { x:W/2, y:Math.min(H-125,Math.max(335,H*.64)), r:48 };
 }
 
+function drawStormAt(field,drawX){
+  const q=Math.max(0,Math.min(1,field.t/field.life)),fade=1-q,spin=field.spin+field.t*(1.5+field.rpm*.72);
+  ctx.save();ctx.translate(drawX,field.y);
+  const frost=ctx.createRadialGradient(0,0,4,0,0,field.radius);
+  frost.addColorStop(0,'rgba(232,255,255,'+(.26*fade)+')');
+  frost.addColorStop(.42,'rgba(121,232,226,'+(.16*fade)+')');
+  frost.addColorStop(1,'rgba(83,108,193,0)');
+  ctx.fillStyle=frost;ctx.beginPath();ctx.arc(0,0,field.radius,0,Math.PI*2);ctx.fill();
+  ctx.rotate(spin);ctx.strokeStyle='#79e8e2';ctx.lineWidth=2.4;ctx.globalAlpha=.7*fade;
+  for(const scale of[.38,.68,.94]){
+    ctx.beginPath();ctx.arc(0,0,field.radius*scale,-Math.PI*.18,Math.PI*.72);ctx.stroke();
+    ctx.rotate(Math.PI*.72);
+  }
+  ctx.strokeStyle='#e8ffff';ctx.lineWidth=1.4;ctx.globalAlpha=.78*fade;
+  for(let flake=0;flake<10;flake++){
+    const a=flake*Math.PI*.2+field.id*.73,r=field.radius*(.18+.7*((flake*37+field.id*11)%97)/97);
+    const x=Math.cos(a)*r,y=Math.sin(a)*r*.72,len=7+field.rpm*2;
+    ctx.beginPath();ctx.moveTo(x-len*.55,y-len*.25);ctx.lineTo(x+len*.55,y+len*.25);ctx.stroke();
+  }
+  ctx.globalAlpha=.95*fade;ctx.fillStyle='#e8ffff';ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+
 function draw(){
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = g.variant === 'A' ? '#151d35' : '#171735';
@@ -2432,18 +2519,19 @@ function draw(){
       ctx.beginPath(); ctx.arc(coreX,coreY,core.r-10,0,Math.PI*2); ctx.fill();
       ctx.strokeStyle='rgba(189,184,255,.75)'; ctx.stroke();
       ctx.fillStyle=g.typePrefix?'#5ee6df':(g.variant==='B'?'#9f9af4':'#73d5ee'); ctx.font='11px "Cascadia Mono", Consolas, monospace';
-      const coreText=g.typePrefix?g.typePrefix.toUpperCase():'COOL';
+      const stormActive=isStormTrial()&&(g.wakeNodes||[]).length>0;
+      const stormReady=isStormTrial()&&(g.stormCharge||0)>=STORM_READY_HITS;
+      const coreText=g.typePrefix?g.typePrefix.toUpperCase():stormActive?(g.experiment==='B'?'STEER':'DRIFT'):stormReady?'READY':'COOL';
       ctx.fillText(coreText,coreX-ctx.measureText(coreText).width/2,coreY-3);
-      const resourceRatio=g.variant==='A' ? Math.max(0,Math.min(1,(g.wingUnits||0)/MAX_WING_UNITS))
-        : g.variant==='B' ? Math.max(0,Math.min(1,(g.coolerLevel||0)/9))
-        : Math.max(0,Math.min(1,((g.escortAmmo||0)/3+(g.coolerLevel||0)/9)/2));
+      const resourceRatio=isStormTrial()?Math.max(0,Math.min(1,(g.stormCharge||0)/STORM_READY_HITS))
+        :Math.max(0,Math.min(1,((g.escortAmmo||0)/MAX_WING_UNITS+(g.coolerLevel||0)/9)/2));
       ctx.strokeStyle=resourceRatio>=1?'#d7ba7d':(g.variant==='B'?'#5ee6df':'#73d5ee'); ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(coreX,coreY,Math.max(8,core.r-7),-Math.PI/2,-Math.PI/2+Math.PI*2*resourceRatio); ctx.stroke();
       ctx.lineWidth=1; ctx.fillStyle=resourceRatio>=1?'#d7ba7d':(g.variant==='B'?'rgba(159,154,244,.8)':'rgba(115,213,238,.85)');
       ctx.font='9px "Cascadia Mono", Consolas, monospace';
-      const resourceText=g.variant==='A'?'BARRELS '+heavyWeaponOrigins().length:g.variant==='B'
-        ?'STORM '+(1+Math.min(9,g.coolerLevel||0)*.18).toFixed(1)
-        :'E'+(g.escortAmmo||0)+' · S'+(g.coolerLevel||0);
+      const resourceText=isStormTrial()
+        ?stormActive?(g.experiment==='B'?'◀ STEER ▶':'STORM ACTIVE'):stormReady?'◀ CAST ▶':'STORM '+(g.stormCharge||0)+'/'+STORM_READY_HITS
+        :'W'+(g.wingUnits||0)+' · S'+(g.coolerLevel||0);
       ctx.fillText(resourceText,coreX-ctx.measureText(resourceText).width/2,coreY+11);
     }
     ctx.strokeStyle='rgba(209,105,105,.35)'; ctx.setLineDash([6,6]);
@@ -2451,25 +2539,10 @@ function draw(){
   }
   if(hasStorm(g.variant)){
     for(const field of (g.wakeNodes||[])){
-      const q=Math.max(0,Math.min(1,field.t/field.life)),fade=1-q,spin=field.spin+field.t*(1.5+field.rpm*.72);
-      ctx.save();ctx.translate(field.x,field.y);
-      const frost=ctx.createRadialGradient(0,0,4,0,0,field.radius);
-      frost.addColorStop(0,'rgba(232,255,255,'+(.26*fade)+')');
-      frost.addColorStop(.42,'rgba(121,232,226,'+(.16*fade)+')');
-      frost.addColorStop(1,'rgba(83,108,193,0)');
-      ctx.fillStyle=frost;ctx.beginPath();ctx.arc(0,0,field.radius,0,Math.PI*2);ctx.fill();
-      ctx.rotate(spin);ctx.strokeStyle='#79e8e2';ctx.lineWidth=2.4;ctx.globalAlpha=.7*fade;
-      for(const scale of[.38,.68,.94]){
-        ctx.beginPath();ctx.arc(0,0,field.radius*scale,-Math.PI*.18,Math.PI*.72);ctx.stroke();
-        ctx.rotate(Math.PI*.72);
-      }
-      ctx.strokeStyle='#e8ffff';ctx.lineWidth=1.4;ctx.globalAlpha=.78*fade;
-      for(let flake=0;flake<10;flake++){
-        const a=flake*Math.PI*.2+field.id*.73,r=field.radius*(.18+.7*((flake*37+field.id*11)%97)/97);
-        const x=Math.cos(a)*r,y=Math.sin(a)*r*.72,len=7+field.rpm*2;
-        ctx.beginPath();ctx.moveTo(x-len*.55,y-len*.25);ctx.lineTo(x+len*.55,y+len*.25);ctx.stroke();
-      }
-      ctx.globalAlpha=.95*fade;ctx.fillStyle='#e8ffff';ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();ctx.restore();
+      const copies=[field.x];
+      if(field.x-field.radius<0)copies.push(field.x+W);
+      if(field.x+field.radius>W)copies.push(field.x-W);
+      for(const drawX of copies)drawStormAt(field,drawX);
     }
     ctx.globalAlpha=1; ctx.lineWidth=1; ctx.font='15px "Cascadia Mono", Consolas, monospace';
   }
@@ -2587,14 +2660,23 @@ function draw(){
   const sx = g.ship.x, sy = H - 34;
   if(hasEscort(g.variant)){
     for(const pos of wingPositions()){
-      ctx.shadowColor='#73d5ee'; ctx.shadowBlur=16; ctx.fillStyle='#9fe9fb'; ctx.strokeStyle='#fff4b8'; ctx.lineWidth=2;
+      const outer=pos.index>=2,scale=outer?.84:1;
+      ctx.save();ctx.globalAlpha=.3;ctx.strokeStyle='#73d5ee';ctx.setLineDash([3,5]);
+      ctx.beginPath();ctx.moveTo(sx,sy+2);ctx.lineTo(pos.x,pos.y+4);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+      ctx.shadowColor='#73d5ee'; ctx.shadowBlur=16; ctx.fillStyle=outer?'#73d5ee':'#9fe9fb'; ctx.strokeStyle='#fff4b8'; ctx.lineWidth=1.6;
       ctx.beginPath();
-      ctx.moveTo(pos.x,pos.y-19);ctx.lineTo(pos.x-18,pos.y+10);ctx.lineTo(pos.x-8,pos.y+6);
-      ctx.lineTo(pos.x,pos.y+13);ctx.lineTo(pos.x+8,pos.y+6);ctx.lineTo(pos.x+18,pos.y+10);
+      ctx.moveTo(pos.x,pos.y-15*scale);ctx.lineTo(pos.x-14*scale,pos.y+8*scale);ctx.lineTo(pos.x-6*scale,pos.y+5*scale);
+      ctx.lineTo(pos.x,pos.y+11*scale);ctx.lineTo(pos.x+6*scale,pos.y+5*scale);ctx.lineTo(pos.x+14*scale,pos.y+8*scale);
       ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle='#73d5ee';ctx.lineWidth=3;
-      for(const dx of[-12,0,12]){ctx.beginPath();ctx.moveTo(pos.x+dx,pos.y-13-Math.abs(dx)*.12);ctx.lineTo(pos.x+dx,pos.y-24-Math.abs(dx)*.12);ctx.stroke();}
-      ctx.fillStyle='rgba(215,186,125,'+(0.35+Math.random()*.45)+')'; ctx.fillRect(pos.x-3,pos.y+12,6,6+Math.random()*5);
+      // One bright barrel per escort matches its real normal-fire origin. As the
+      // formation grows, five spatially distinct muzzle lines become visible.
+      ctx.strokeStyle='#e8ffff';ctx.shadowColor='#fff4b8';ctx.shadowBlur=12;ctx.lineWidth=3.5;
+      ctx.beginPath();ctx.moveTo(pos.x,pos.y-11*scale);ctx.lineTo(pos.x,pos.y-25*scale);ctx.stroke();
+      ctx.fillStyle='#d7ba7d';ctx.globalAlpha=.9;ctx.fillRect(pos.x-2.2,pos.y-28*scale,4.4,4.4);
+      ctx.globalAlpha=.75;ctx.fillStyle='#fff4b8';ctx.font='7px "Cascadia Mono", Consolas, monospace';
+      ctx.fillText(String(pos.index+1),pos.x-2,pos.y+3);
+      ctx.globalAlpha=1;ctx.fillStyle='rgba(215,186,125,'+(0.35+Math.random()*.45)+')';
+      ctx.fillRect(pos.x-2,pos.y+10*scale,4,5+Math.random()*5);ctx.restore();
     }
     ctx.shadowBlur=0; ctx.lineWidth=1;
   }
@@ -2630,6 +2712,20 @@ function draw(){
     }
     ctx.globalAlpha = 1;
   }
+  const flashNow=performance.now();
+  if(flashNow<(g.rewardFlashUntil||0)){
+    const duration=Math.max(1,(g.rewardFlashUntil||0)-(g.rewardFlashAt||0));
+    const q=Math.max(0,Math.min(1,(flashNow-(g.rewardFlashAt||flashNow))/duration)),fade=1-q;
+    const fx=g.rewardFlashX||sx,fy=g.rewardFlashY||sy;
+    ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle='rgba(220,255,255,'+(.18*fade*fade)+')';ctx.fillRect(0,0,W,H);
+    ctx.translate(fx,fy);ctx.strokeStyle='#fff4b8';ctx.shadowColor='#9fe9fb';ctx.shadowBlur=22;ctx.lineWidth=2+5*fade;
+    for(let ray=0;ray<16;ray++){
+      const a=ray*Math.PI/8,len=32+q*118+(ray%2)*22;
+      ctx.globalAlpha=fade*(ray%2?.72:1);ctx.beginPath();ctx.moveTo(Math.cos(a)*10,Math.sin(a)*10);ctx.lineTo(Math.cos(a)*len,Math.sin(a)*len);ctx.stroke();
+    }
+    ctx.globalAlpha=.95*fade;ctx.lineWidth=8*fade+2;ctx.strokeStyle='#e8ffff';ctx.beginPath();ctx.arc(0,0,16+q*104,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=.55*fade;ctx.lineWidth=3;ctx.strokeStyle='#73d5ee';ctx.beginPath();ctx.arc(0,0,8+q*148,0,Math.PI*2);ctx.stroke();ctx.restore();
+  }
 }
 
 // ---------- input ----------
@@ -2663,19 +2759,27 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Tab'){ e.preventDefault(); handleTab(); return; }
+  if (e.key === ' ' || e.code === 'Space'){ e.preventDefault(); return; }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
     e.preventDefault();
     const side = e.key === 'ArrowLeft' ? 'left' : 'right';
+    if(e.shiftKey&&isStormTrial()){castStorm(side==='left'?-1:1,'keyboard');return;}
     if (!moveInput[side]){
       const nudge = side === 'left' ? -20 : 20;
       const beforeNudge=g.ship.x;
       g.ship.x = Math.max(16,Math.min(W-16,g.ship.x+nudge));
-      castWakeFromMovement(beforeNudge,g.ship.x,0,true);
+      if(!isStormTrial())castWakeFromMovement(beforeNudge,g.ship.x,0,true);
     }
     moveInput[side] = true;
     return;
   }
   if (e.key.length === 1 || e.key === 'Backspace'){ e.preventDefault(); handleKey(e.key); }
+});
+$('h-resource').addEventListener('pointerdown',e=>{
+  if(!isStormTrial())return;
+  e.preventDefault();
+  const rect=$('h-resource').getBoundingClientRect();
+  castStorm(e.clientX<rect.left+rect.width/2?-1:1,'hud');
 });
 window.addEventListener('keyup', e => {
   if (e.key === 'ArrowLeft') moveInput.left = false;

@@ -16,7 +16,8 @@ function element(id){
   const classes = new Set(id === 'start' ? [] : ['hidden']);
   return {
     id, style:{setProperty(k,v){this[k]=v;}}, textContent:'', innerHTML:'', offsetWidth:800,
-    classList:{add:(...xs)=>xs.forEach(x=>classes.add(x)),remove:(...xs)=>xs.forEach(x=>classes.delete(x)),contains:x=>classes.has(x)},
+    classList:{add:(...xs)=>xs.forEach(x=>classes.add(x)),remove:(...xs)=>xs.forEach(x=>classes.delete(x)),contains:x=>classes.has(x),
+      toggle:(x,force)=>force===undefined?(classes.has(x)?(classes.delete(x),false):(classes.add(x),true)):(force?(classes.add(x),true):(classes.delete(x),false))},
     addEventListener(){}, appendChild(){}, remove(){},
     getBoundingClientRect(){return{left:0,top:0,width:id==='wrap'?viewport.w:800,height:id==='wrap'?viewport.h:600};},
   };
@@ -65,7 +66,8 @@ assert.ok(!html.includes('RED ARROWS')&&!html.includes('HEAT VECTOR LOCK')&&!htm
 
 run(`startGame('type');`);
 assert.deepStrictEqual(Array.from(run(`[TRACE.meta.pipeline,TRACE.meta.build,TRACE.meta.ab_concept,g.heat.particles.length,g.heat.floorBins.length]`)),
-  [7,'torus-25','heavy_interceptor_rail_slam',180,16]);
+  [8,'torus-26','fusion_fixed_drift_storm',180,16]);
+assert.strictEqual(run(`$('h-variant').textContent`),'A','the HUD must name the visible A/B candidate, not its shared internal C base');
 assert.strictEqual(run('TRACE.meta.reviewer'),'agent-a','reviewer query must survive into trace metadata');
 assert.strictEqual(run(`g.heat.temp.every(v=>v===0)&&g.heat.floorBins.every(v=>v===0)&&g.heat.particles.every(p=>!p.active)`),true,
   'the whole torus must start at absolute zero with no visible tracers');
@@ -150,6 +152,17 @@ assert.ok(html.includes("const railRoute=g.variant==='A'||(g.variant==='C'&&word
   'the combined build must preserve both exact A rail-slam and B core-link routes while sharing one correctness pipeline');
 
 run(`
+  g.variant='C';g.experiment='A';g.sentence=['the time','the time completing it'];g.idx=0;g.typePrefix='thetime';g.lock=null;
+  g.words=[makeWord('the time',0,100),makeWord('the time completing it',1,300)];TRACE.events.length=0;
+  const exactFocus=focusSelection(g.typePrefix);globalThis.exactPrefix=[exactFocus.candidates.length,exactFocus.chosen.text,exactFocus.chosen.order];
+  handleTab();globalThis.exactConfirmed=[g.idx,g.words[0].resolved,g.words[1].resolved,TRACE.events.some(e=>e.type==='focus_confirm'&&e.order===0)];
+`);
+assert.deepStrictEqual(Array.from(run('exactPrefix')),[1,'the time',0],
+  'a fully typed short chunk must outrank a longer chunk that only shares its prefix');
+assert.deepStrictEqual(Array.from(run('exactConfirmed')),[1,true,false,true],
+  'Tab must confirm the visible exact chunk without selecting the longer prefix collision');
+
+run(`
   g.heat=createHeatField();g.words=[makeWord('Hot',0,200,150)];
   stepHeatField(HEAT_SIM_DT,performance.now());
   globalThis.boundaryModel=[wordBoundaryTemperature(g.words[0]),g.heat.maxTemp,g.heat.totalMass,
@@ -221,43 +234,62 @@ assert.strictEqual(run(`g.heatArrows.every(a=>a.life>=a.arm+a.travelDistance/Mat
   'far arrows must live long enough to cross their locked aim point instead of expiring by fixed lifetime');
 
 run(`
-  endHeatVolley('test_reset');g.variant='A';g.pressureWaves=[];g.pressureWaveSeq=0;g.wingUnits=0;g.combo=1;
-  g.sentence=['Alpha'];g.idx=1;const alpha=makeWord('Alpha',0,100,160);alpha.resolved=true;alpha.resolvedAt=performance.now();
-  alpha.impactCombo=1;alpha.pts=100;g.words=[alpha];alpha.hp=0;settleWord(alpha);
-  globalThis.aReward=[g.wingUnits,g.pressureWaves.length,TRACE.events.some(e=>e.type==='wing_deploy'&&e.barrels===4),
-    MAX_WING_UNITS,weaponLv(),heavyWeaponOrigins().length];
+  endHeatVolley('escort_reset');g.variant='C';g.experiment='A';g.pressureWaves=[];g.pressureWaveSeq=0;g.wingUnits=0;g.combo=1;
+  g.escortShots=[];g.missiles=[];g.shotSeq=0;TRACE.events.length=0;
+  for(let i=0;i<4;i++){const dock=makeWord('Dock'+i,i,100+i*90,160);dock.impactCombo=i+1;deployWingGun(dock,dock.x,dock.y,{limited:true});}
+  const target=makeWord('Target',9,330,120);target.resolved=false;
+  for(let i=0;i<5;i++)launchMissile(target,0,undefined,weaponLv());
+  globalThis.escortReward=[g.wingUnits,g.pressureWaves.length,TRACE.events.some(e=>e.type==='wing_deploy'&&e.after===4&&e.barrels===5),
+    MAX_WING_UNITS,weaponLv(),heavyWeaponOrigins().length,new Set(g.missiles.map(m=>Math.round(m.x/10))).size,
+    g.missiles.filter(m=>m.origin==='escort').length,Math.round(g.rewardFlashUntil-g.rewardFlashAt)];
 `);
-assert.deepStrictEqual(Array.from(run('aReward')),[1,4,true,1,4,4],
-  'A docks at most one large escort while preserving four real firing origins');
+assert.deepStrictEqual(Array.from(run('escortReward')),[4,4,true,4,5,5,5,4,260],
+  'four symmetric escorts must add four real normal-fire origins and a recorded dock flash');
 
 run(`
-  g.variant='B';g.coolerLevel=0;g.wakeNodes=[];g.combo=3;g.sentence=['Wake'];g.idx=1;
-  const wake=makeWord('Wake',0,330,160);wake.resolved=true;wake.resolvedAt=performance.now();wake.impactCombo=3;wake.pts=100;wake.hp=0;g.words=[wake];
-  settleWord(wake);const beforeMove=g.wakeNodes.length;moveInput.right=true;update(.31);moveInput.right=false;
-  const bStorm=g.wakeNodes[0];globalThis.bReward=[g.coolerLevel,beforeMove,g.wakeNodes.length,g.wakeNodes.length>beforeMove,
-    TRACE.events.some(e=>e.type==='wake_drive'&&e.movement_only===true),bStorm.radius>=170,bStorm.life>=23.9];
+  g.variant='C';g.experiment='A';g.coolerLevel=4;g.stormCharge=3;g.wakeNodes=[];g.ship.x=300;g.over=false;g.viewportPaused=false;
+  TRACE.events.length=0;const fixed=castStorm(1,'test-a'),fixedStart=fixed.x;updateHeatCombat(1);castStorm(-1,'test-a-steer');
+  globalThis.fixedStorm=[fixed.x-fixedStart,fixed.vx,fixed.direction,g.stormCharge,
+    TRACE.events.some(e=>e.type==='storm_cast'&&e.steerable===false),TRACE.events.some(e=>e.type==='storm_steer'),
+    TRACE.events.some(e=>e.type==='storm_cast_blocked'&&e.reason==='active_fixed')];
 `);
-assert.deepStrictEqual(Array.from(run('bReward')),[3,0,1,true,true,true,true],
-  'B physical impact only charges; actual movement casts a wide blizzard that survives the observed learner thinking interval');
+assert.deepStrictEqual(Array.from(run('fixedStorm')),[34,34,1,0,true,false,true],
+  'A spends one earned skill and locks the slow drift direction while it remains active');
 
 run(`
-  endHeatVolley('fusion_reset');g.variant='C';g.pressureWaves=[];g.wakeNodes=[];g.wingUnits=0;g.escortAmmo=0;g.coolerLevel=0;g.combo=2;
+  g.variant='C';g.experiment='B';g.coolerLevel=4;g.stormCharge=3;g.wakeNodes=[];g.ship.x=300;TRACE.events.length=0;
+  const steer=castStorm(1,'test-b');updateHeatCombat(.5);const beforeTurn=steer.x;castStorm(-1,'test-b-steer');updateHeatCombat(.5);
+  globalThis.steerStorm=[beforeTurn-300,steer.x-beforeTurn,steer.vx,steer.direction,g.stormCharge,
+    TRACE.events.some(e=>e.type==='storm_steer'&&e.before===1&&e.after===-1)];
+`);
+assert.deepStrictEqual(Array.from(run('steerStorm')),[17,-17,-34,-1,0,true],
+  'B spends the same skill but can reverse the active storm with Shift plus an arrow');
+run(`
+  g.variant='C';g.experiment='A';g.coolerLevel=3;g.stormCharge=3;g.wakeNodes=[];
+  globalThis.noAutoStorm=castWakeFromMovement(300,340,0,true);
+`);
+assert.strictEqual(run('noAutoStorm'),null,'ordinary movement must never auto-spend the A/B storm skill');
+assert.ok(html.includes("if (e.key === ' ' || e.code === 'Space'){ e.preventDefault(); return; }"),
+  'Space is typing cadence and must stay a no-op instead of casting the storm');
+
+run(`
+  endHeatVolley('fusion_reset');g.variant='C';g.experiment='A';g.pressureWaves=[];g.wakeNodes=[];g.wingUnits=0;g.escortAmmo=0;g.coolerLevel=0;g.stormCharge=0;g.combo=2;
   g.sentence=['Fuse'];g.idx=1;const fuse=makeWord('Fuse',0,220,160);fuse.resolved=true;fuse.resolvedAt=performance.now();
   fuse.impactCombo=2;fuse.pts=100;fuse.hp=0;g.words=[fuse];settleWord(fuse);
   globalThis.fusionReward=[g.wingUnits,g.escortAmmo,g.coolerLevel,g.pressureWaves.length,
-    TRACE.events.some(e=>e.type==='fusion_reward'&&e.escort_ammo===1&&e.storm_level===2)];
+    TRACE.events.some(e=>e.type==='fusion_reward'&&e.escort_ammo===1&&e.storm_level===2&&e.storm_charge===1)];
 `);
 assert.deepStrictEqual(Array.from(run('fusionReward')),[1,1,2,1,true],
   'the combined build keeps both physical reward presentations but grants only one earned escort intercept and one rail wave per impact');
 run(`
-  g.variant='C';g.coolerLevel=0;const later=makeWord('Later',1,300),earlier=makeWord('Earlier',0,100);
+  g.variant='C';g.experiment='A';g.coolerLevel=0;g.stormCharge=0;const later=makeWord('Later',1,300),earlier=makeWord('Earlier',0,100);
   later.impactCombo=2;earlier.impactCombo=1;boostWakeDrive(later,300,160);boostWakeDrive(earlier,100,160);
-  globalThis.outOfOrderStorm=[g.coolerLevel,TRACE.events.filter(e=>e.type==='wake_drive').slice(-2).map(e=>[e.before,e.after])];
+  globalThis.outOfOrderStorm=[g.coolerLevel,g.stormCharge,TRACE.events.filter(e=>e.type==='wake_drive').slice(-2).map(e=>[e.before,e.after])];
 `);
-assert.strictEqual(run('JSON.stringify(outOfOrderStorm)'),'[2,[[0,2],[2,2]]]',
+assert.strictEqual(run('JSON.stringify(outOfOrderStorm)'),'[2,2,[[0,2],[2,2]]]',
   'a late first-word missile may not rewind STORM earned by an earlier-arriving second-word missile');
 run(`
-  g.variant='B';g.coolerLevel=3;g.wakeNodes=[];g.wakeDropT=.04;TRACE.events.length=0;
+  g.variant='B';g.experiment='C';g.coolerLevel=3;g.wakeNodes=[];g.wakeDropT=.04;TRACE.events.length=0;
   const nudgeBefore=320,nudgeAfter=340;castWakeFromMovement(nudgeBefore,nudgeAfter,0,true);
   globalThis.nudgeWake=[g.wakeNodes.length,g.wakeNodes[0].x,
     TRACE.events.some(e=>e.type==='wake_node'&&e.reason==='movement'),castWakeFromMovement(340,340,0,true)];
@@ -266,7 +298,7 @@ assert.deepStrictEqual(Array.from(run('nudgeWake')).slice(0,3),[1,340,true],
   'a short keyboard nudge must cast the charged B blizzard even when no animation frame observes held input');
 assert.strictEqual(run('nudgeWake[3]'),null,'no-coordinate-change input must still be unable to cast a blizzard');
 assert.ok(html.includes('castWakeFromMovement(beforeNudge,g.ship.x,0,true)'),
-  'the real ArrowLeft/ArrowRight nudge path must feed the movement-only reward');
+  'the C control must retain its old movement-only blizzard path');
 
 run(`
   g.variant='A';g.pressureWaves=[];g.wingUnits=0;g.pendingSentenceClear=false;g.solved=0;TRACE.events.length=0;
@@ -400,4 +432,4 @@ assert.deepStrictEqual(Array.from(run('heatPersists')),[.3700000047683716,.37000
 assert.strictEqual(run('paired'),true,'A/B share TOEFL content and starting geometry');
 
 assert.ok(!html.includes('fillRect(field.x-'),'rejected rectangular safe-zone rendering must stay removed');
-console.log('input pipeline torus-25 tests passed: combined rail/blizzard rewards, conserved wrong-answer heat, physical clears, bounded escort, swept hits');
+console.log('input pipeline torus-26 tests passed: exact-prefix focus, four-gun escort growth, manual A/B storms, conserved wrong-answer heat, physical clears, swept hits');

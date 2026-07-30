@@ -22,7 +22,10 @@ const traces = fs.readdirSync(traceDir).filter(name => /^tr_.*\.json$/.test(name
   catch (error) { return { file, mtime:0, error }; }
 }).filter(row => !row.error && row.trace && row.trace.meta && row.trace.meta.build === build);
 
-const specs = ['agent-fusion-a','agent-fusion-b'].map(reviewer=>({variant:'C',reviewer,concept:'fusion_rail_blizzard'}));
+const specs = [
+  {variant:'A',reviewer:'agent-storm-a',concept:'fusion_fixed_drift_storm',steerable:false},
+  {variant:'B',reviewer:'agent-storm-b',concept:'fusion_steerable_drift_storm',steerable:true},
+];
 
 const failures = [], passed = [];
 for (const spec of specs) {
@@ -30,15 +33,23 @@ for (const spec of specs) {
     .sort((a,b) => b.mtime-a.mtime);
   if (!candidates.length) { failures.push(`${spec.variant}: no ${build} trace for reviewer=${spec.reviewer}`); continue; }
   const row = candidates[0], trace = row.trace, events = Array.isArray(trace.events) ? trace.events : [];
+  const samples=Array.isArray(trace.samples)?trace.samples:[];
+  const escortMissileSeen=samples.some(sample=>sample.scene&&Array.isArray(sample.scene.missiles)&&
+    sample.scene.missiles.some(missile=>missile[9]==='escort'));
   const checks = {
-    concept: trace.meta.ab_concept === spec.concept,
+    concept: trace.meta.pipeline >= 8 && trace.meta.base_variant === 'C' && trace.meta.ab_concept === spec.concept,
     assembly: ['direct_rail_slam','core_link'].every(route=>
       events.some(event => event.type === 'assembly_launch' && event.route === route) &&
       events.some(event => event.type === 'assembly_dock' && event.route === route)),
-    reward: events.some(event => event.type === 'fusion_reward' && event.escort_ammo > 0 && event.storm_level > 0) &&
+    escort: events.some(event => event.type === 'wing_deploy' && event.after >= 4 && event.normal_fire_origins >= 5 && event.reward_flash_ms >= 260) &&
+      escortMissileSeen &&
+      events.some(event => event.type === 'fusion_reward' && event.escort_ammo > 0 && event.storm_charge > 0) &&
       events.some(event => event.type === 'escort_intercept_spent') &&
-      events.some(event => event.type === 'wake_drive' && event.movement_only === true) &&
-      events.some(event => event.type === 'wake_node' && event.reason === 'movement'),
+      events.some(event => event.type === 'storm_charge' && event.ready === true),
+    storm: events.some(event => event.type === 'storm_cast' && event.steerable === spec.steerable && event.vx !== 0) &&
+      (spec.steerable
+        ? events.some(event => event.type === 'storm_steer' && event.before !== event.after)
+        : events.some(event => event.type === 'storm_cast_blocked' && event.reason === 'active_fixed')),
     phase: events.some(event => event.type === 'heat_volley_armed' && event.arrows > 0 &&
       event.field_unchanged === true && event.heat_integral > 0),
     hit: events.some(event => event.type === 'heat_arrow_hit') &&
@@ -49,7 +60,7 @@ for (const spec of specs) {
   const missing = Object.entries(checks).filter(([,ok]) => !ok).map(([name]) => name);
   if (missing.length) failures.push(`${spec.reviewer}: ${path.basename(row.file)} missing ${missing.join(', ')}`);
   else passed.push({ variant:spec.variant, reviewer:spec.reviewer, file:path.relative(repo,row.file), events:events.length,
-    samples:Array.isArray(trace.samples)?trace.samples.length:0 });
+    samples:samples.length });
 }
 
 if (failures.length) {

@@ -249,9 +249,13 @@ for (const f of files){
     console.log('reward loop:', T.meta.ab_concept || 'legacy',
       '| max wing guns', rewardRows.length ? Math.max(...rewardRows.map(row=>row[0]||0)) : 0,
       '| max wake nodes', rewardRows.length ? Math.max(...rewardRows.map(row=>row[1]||0)) : 0,
+      '| max normal origins', rewardRows.length ? Math.max(...rewardRows.map(row=>row[4]||0)) : 0,
       '| max escort ammo', rewardRows.length ? Math.max(...rewardRows.map(row=>row[6]||0)) : 0,
+      '| max storm charge', rewardRows.length ? Math.max(...rewardRows.map(row=>row[7]||0)) : 0,
+      '| dock flash samples', rewardRows.filter(row=>(row[8]||0)>0).length,
       '| wing deploy/cooling/shatter', [ev.wing_deploy||0,ev.cooling_volley||ev.wing_salvo||0,ev.wing_shatter||0].join('/'),
-      '| wake drive/node/deflect', [ev.wake_drive||0,ev.wake_node||0,ev.wake_deflect||0].join('/'),
+      '| storm charge/cast/steer/block', [ev.storm_charge||0,ev.storm_cast||0,ev.storm_steer||0,ev.storm_cast_blocked||0].join('/'),
+      '| wake node/deflect', [ev.wake_node||0,ev.wake_deflect||0].join('/'),
       '| heat arm/hit/contact/end', [(ev.heat_volley_armed||0)+(ev.heat_phase_change||0),ev.heat_arrow_hit||0,ev.heat_arrow_contact||0,ev.heat_arrow_end||0].join('/'),
       '| assembly launch/dock', [ev.assembly_launch||0,ev.assembly_dock||0].join('/'),
       '| enemy empowers', ev.enemy_empower||0,
@@ -275,7 +279,9 @@ for (const f of files){
       '| max duration ms',Math.max(...assemblyFlightRows.map(row=>Number(row[8])||0)));
     if(wakeFieldRows.length) console.log('blizzard fields: samples', wakeFieldRows.length,
       '| max radius', Math.max(...wakeFieldRows.map(row=>Number(row[3])||0)).toFixed(1),
-      '| max simultaneous', Math.max(...visual.map(s=>Array.isArray(s.scene.wakeFields)?s.scene.wakeFields.length:0)));
+      '| max simultaneous', Math.max(...visual.map(s=>Array.isArray(s.scene.wakeFields)?s.scene.wakeFields.length:0)),
+      '| moving samples',wakeFieldRows.filter(row=>Math.abs(Number(row[8])||0)>0).length,
+      '| left/right samples',wakeFieldRows.filter(row=>(Number(row[9])||0)<0).length+'/'+wakeFieldRows.filter(row=>(Number(row[9])||0)>0).length);
     if(quenchBurstRows.length||thermalClears.length) console.log('physical clear waves: samples/end events',quenchBurstRows.length+'/'+thermalClears.length,
       '| total measured heat before/after',thermalClears.reduce((n,e)=>n+e.heat_before,0).toFixed(3)+'/'+thermalClears.reduce((n,e)=>n+e.heat_after,0).toFixed(3),
       '| escort intercepts spent',ev.escort_intercept_spent||0);
