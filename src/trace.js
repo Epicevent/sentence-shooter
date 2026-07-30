@@ -12,9 +12,9 @@ function traceStart(mode){
   for (const b of activeTraceBanners.values()) b.el.remove();
   activeTraceBanners.clear();
   TRACE.meta = {
-    started: performance.now(), mode, pipeline: 9, ua: navigator.userAgent.slice(0, 60),
+    started: performance.now(), mode, pipeline: 10, ua: navigator.userAgent.slice(0, 60),
     w: W, h: H, dpr, at: Date.now(), hz: 8, build:BUILD_ID, base_variant:'C', ab_variant:AB_VARIANT, ab_seed:AB_SEED,
-    reviewer:AB_CONFIG.reviewer,
+    reviewer:AB_CONFIG.reviewer,craft:g.craft,craft_variant:g.variant,craft_concept:variantConcept(g.variant),
     session_id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
     ab_concept:AB_CONCEPT,
     // Compact scene rows retain enough state to reconstruct/query the changing playfield.
@@ -25,10 +25,14 @@ function traceStart(mode){
     pulse_fields: ['x','y','radius','max_radius','life_ms','age_ms','color'],
     pressure_wave_fields: ['id','x','y','width','age_ms','life_ms','guns'],
     quench_burst_fields: ['id','x','y','radius','max_radius','age_ms','life_ms','strength','reason','cells'],
-    heat_arrow_fields: ['id','x','y','vx','vy','age_ms','arm_ms','life_ms','heat','silhouette','chill','source_x','source_y'],
+    heat_arrow_fields: ['id','x','y','vx','vy','age_ms','arm_ms','life_ms','heat','silhouette','chill','source_x','source_y','origin','grazed','graze_armed'],
     wake_field_fields: ['id','x','y','radius','age_ms','life_ms','rpm','contacts','vx','direction'],
     sweep_fields: ['id','x','y','vx','vy','age_ms','life_ms','corridor','direction','cleared','cooled_cells'],
     sweep_absorb_fields: ['id','source_x','source_y','target_x','target_y','age_ms','life_ms'],
+    phantom_absorb_fields: ['id','source_x','source_y','target_x','target_y','age_ms','life_ms'],
+    counter_line_fields: ['id','x','age_ms','life_ms','charges','player_anchored'],
+    counter_shot_fields: ['x','y','vx','vy','age_ms','life_ms','line_id'],
+    cargo_fields: ['order','x','y','source_x','source_y','dock_x','elapsed_ms','attached'],
     incoming_word_fields: ['order','render_x','render_y','target_y','w','h','is_decoy','visible'],
     assembly_flight_fields: ['id','order','route','source_x','source_y','target_x','target_y','age_ms','duration_ms'],
     interceptor_fields: ['x','y','vx','vy','target_id','age_ms','life_ms'],
@@ -36,12 +40,12 @@ function traceStart(mode){
     floor_bin_fields: ['left_to_right_local_heat'],
     banner_fields: ['id','text','gold','x','y','w','h','opacity'],
     reward_fields: ['wing_units','wake_nodes','combat_started','combat_armed','normal_origins','storm_power',
-      'escort_ammo','storm_charge','reward_flash_ms','experiment','reward_flash_x','reward_flash_y'],
+      'escort_ammo','storm_charge','reward_flash_ms','experiment','reward_flash_x','reward_flash_y','craft'],
     ui_fields: ['score','weapon_level','built_line','message','game_over'],
-    scene_fields: ['i','freeze_ms','danger','viewport_paused','pressure_y','recoil_bank',
-      'delivery_ms','cargo_order','dock_x','jam_ms','move_dir','ship','lock','inventory',
+    scene_fields: ['i','craft','freeze_ms','danger','viewport_paused','pressure_y','recoil_bank',
+      'delivery_ms','cargo_order','dock_x','cargo','jam_ms','move_dir','ship','lock','inventory',
       'sync','reward','feedback','words','missiles','escortShots','particles','pulses',
-      'heat','floorBins','pressureWaves','quenchBursts','heatArrows','interceptorShots','wakeFields','sweeps','sweepAbsorbs',
+      'heat','floorBins','pressureWaves','quenchBursts','heatArrows','interceptorShots','wakeFields','sweeps','sweepAbsorbs','phantomAbsorbs','counterLines','counterShots',
       'incomingWords','assemblyFlights','banners','shake','ui'],
   };
   TRACE.samples.length = 0; TRACE.events.length = 0;
@@ -160,6 +164,8 @@ function reflowViewport(oldW, oldH){
     if(g.heat) for(const p of g.heat.particles){p.x=p.u*W;p.px=p.x;}
     for(const wave of(g.pressureWaves||[])){wave.x=Math.max(8,Math.min(W-8,wave.x*W/oldW));wave.width*=W/oldW;}
     for(const burst of(g.quenchBursts||[])){burst.x=torusWrap(burst.x*W/oldW,W);burst.maxR=thermalWorldRadius();}
+    for(const line of(g.counterLines||[]))line.x=Math.max(28,Math.min(W-28,line.x*W/oldW));
+    if(g.cargo)g.cargo.dockX=g.cargo.dockX<oldW/2?DOCK_RADIUS:W-DOCK_RADIUS;
   }
 
   const requiredHeight=minimumPlayHeight();
@@ -295,7 +301,7 @@ function traceScene(now){
     Math.round(b.t*1000),Math.round(b.life*1000),roundTrace(b.strength),b.reason,b.cells||0]);
   const heatArrows=(g.heatArrows||[]).filter(a=>!a.dead).map(a=>[a.id,roundTrace(a.x),roundTrace(a.y),
     roundTrace(a.vx),roundTrace(a.vy),Math.round(a.age*1000),Math.round(a.arm*1000),Math.round(a.life*1000),roundHeat(a.heat),
-    a.silhouette==='arrow'?1:0,roundTrace(a.chill||0),roundTrace(a.sourceX),roundTrace(a.sourceY)]);
+    a.silhouette==='arrow'?1:0,roundTrace(a.chill||0),roundTrace(a.sourceX),roundTrace(a.sourceY),a.origin||'legacy',a.grazed?1:0,a.grazeArmed?1:0]);
   const interceptorShots=(g.interceptorShots||[]).map(s=>[roundTrace(s.x),roundTrace(s.y),roundTrace(s.vx),roundTrace(s.vy),
     s.target?s.target.id:null,Math.round(s.t*1000),Math.round(s.life*1000)]);
   const wakeFields=(g.wakeNodes||[]).map(node=>[node.id,roundTrace(node.x),roundTrace(node.y),roundTrace(node.radius),
@@ -305,17 +311,25 @@ function traceScene(now){
     Math.round(s.t*1000),Math.round(s.life*1000),roundTrace(s.corridor),s.direction,s.cleared||0,s.cooledCells||0]);
   const sweepAbsorbs=(g.sweepAbsorbs||[]).map(a=>[a.id,roundTrace(a.sx),roundTrace(a.sy),roundTrace(a.tx),roundTrace(a.ty),
     Math.round(a.t*1000),Math.round(a.life*1000)]);
+  const phantomAbsorbs=(g.phantomAbsorbs||[]).map(a=>[a.id,roundTrace(a.sx),roundTrace(a.sy),roundTrace(a.tx),roundTrace(a.ty),
+    Math.round(a.t*1000),Math.round(a.life*1000)]);
+  const counterLines=(g.counterLines||[]).map(line=>[line.id,roundTrace(line.x),Math.round(line.t*1000),Math.round(line.life*1000),
+    line.charges||0,Math.abs(g.ship.x-line.x)<=26?1:0]);
+  const counterShots=(g.counterShots||[]).map(shot=>[roundTrace(shot.x),roundTrace(shot.y),roundTrace(shot.vx),roundTrace(shot.vy),
+    Math.round(shot.t*1000),Math.round(shot.life*1000),shot.line]);
   const incomingWords=(g.incomingWords||[]).map(w=>[w.order,roundTrace(w.x),roundTrace(w.y),roundTrace(w.targetY),
     roundTrace(w.w),roundTrace(w.h),w.isDecoy?1:0,visiblePct({x:w.x,y:w.y,w:w.w,h:w.h})]);
   const assemblyFlights=(g.assemblyFlights||[]).map(f=>[f.id,f.order,f.route,roundTrace(f.sourceX),roundTrace(f.sourceY),
     roundTrace(f.targetX),roundTrace(f.targetY),Math.max(0,Math.round(now-(f.startedAt||now))),f.duration]);
   return {
-    i: g.idx, f: Math.max(0, Math.round(g.freeze * 1000)), d: g.danger ? 1 : 0,
+    i: g.idx, craft:g.craft, f: Math.max(0, Math.round(g.freeze * 1000)), d: g.danger ? 1 : 0,
     vp: g.viewportPaused ? 1 : 0, pressure_y:roundTrace(threatLineY()),
     recoil_bank:roundTrace(g.recoilBank || 0),
-    // Retained as nullable schema fields so historical DELIVERY traces still analyze,
-    // but both live variants now use the selected BREACH rules.
-    delivery_ms:null, cargo_order:null, dock_x:null,
+    delivery_ms:g.cargo?Math.max(0,Math.round(now-g.cargo.capturedAt)):null,
+    cargo_order:g.cargo?g.cargo.order:g.cargoPendingOrder,
+    dock_x:g.cargo?roundTrace(g.cargo.dockX):null,
+    cargo:g.cargo?[g.cargo.order,roundTrace(g.cargo.x),roundTrace(g.cargo.y),roundTrace(g.cargo.sourceX),roundTrace(g.cargo.sourceY),
+      roundTrace(g.cargo.dockX),Math.max(0,Math.round(now-g.cargo.capturedAt)),g.cargo.attached?1:0]:null,
     jam_ms:Math.max(0,Math.round((g.shotJamUntil || 0)-now)),
     move_dir:(moveInput.right?1:0)-(moveInput.left?1:0),
     ship: [roundTrace(g.ship.x), roundTrace(H - 34)], lock: g.lock ? g.lock.order : null,
@@ -327,9 +341,9 @@ function traceScene(now){
     reward:[g.wingUnits||0,(g.wakeNodes||[]).length,g.combatStarted?1:0,
       g.combatStarted?1:0,heavyWeaponOrigins().length,g.coolerLevel||0,g.escortAmmo||0,
       g.stormCharge||0,Math.max(0,Math.round((g.rewardFlashUntil||0)-now)),g.experiment||'C',
-      roundTrace(g.rewardFlashX||0),roundTrace(g.rewardFlashY||0)],
+      roundTrace(g.rewardFlashX||0),roundTrace(g.rewardFlashY||0),g.craft],
     words, missiles, escortShots, particles, pulses,
-    heat, floorBins, pressureWaves, quenchBursts, heatArrows, interceptorShots, wakeFields, sweeps, sweepAbsorbs,
+    heat, floorBins, pressureWaves, quenchBursts, heatArrows, interceptorShots, wakeFields, sweeps, sweepAbsorbs,phantomAbsorbs,counterLines,counterShots,
     incomingWords, assemblyFlights,
     banners, shake: $('wrap').classList.contains('shake') ? 1 : 0,
     ui: [Math.round(g.scoreDisplay||0), weaponLv(), g.builtDrawn || '', $('msg').textContent || '', g.over ? 1 : 0],

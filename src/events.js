@@ -1,6 +1,28 @@
 // ---------- input ----------
 let lastMode = 'tap';
 function begin(mode){ lastMode = mode; startGame(mode); }
+function craftRecord(id,key){
+  try{return +(localStorage.getItem('shooter2_'+key+'_'+id)||0)}catch(e){return 0}
+}
+function renderHangar(){
+  const grid=$('hangar-grid');
+  grid.innerHTML=CRAFT_ORDER.map(id=>{
+    const craft=CRAFTS[id],selected=id===selectedCraft;
+    return '<button type="button" class="craft-card '+(selected?'selected':'')+'" data-craft="'+id+'" role="radio" aria-checked="'+selected+'" style="--craft-color:'+craft.color+'">'+
+      '<span class="craft-icon '+id+'"></span><span class="craft-name">'+craft.name+'</span>'+
+      '<span class="craft-verb">'+craft.verb+'</span><span class="craft-detail">'+craft.detail+'</span>'+
+      '<span class="craft-record">BEST '+craftRecord(id,'best')+' · CLEAR '+craftRecord(id,'solved')+'</span></button>';
+  }).join('');
+  const craft=CRAFTS[selectedCraft];
+  $('start-best').textContent='SELECTED '+craft.name+' · '+craft.verb;
+  if(document.body)document.body.dataset.variant=craft.variant;
+}
+function selectCraft(id,source){
+  if(!CRAFTS[id])return;
+  selectedCraft=id;
+  try{localStorage.setItem('shooter2_craft',id)}catch(e){}
+  renderHangar();
+}
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   const r = cv.getBoundingClientRect();
@@ -15,17 +37,31 @@ cv.addEventListener('pointermove', e => {
   g.ship.x = Math.max(16,Math.min(W-16,e.clientX-r.left));
   g.ship.manualUntil = performance.now()+500;
 });
-$('start').addEventListener('pointerdown', e => { e.preventDefault(); begin('tap'); });
+$('hangar-grid').addEventListener('pointerdown',e=>{
+  const card=e.target.closest('[data-craft]');
+  if(!card)return;
+  e.preventDefault();e.stopPropagation();selectCraft(card.dataset.craft,'pointer');
+});
+$('launch').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();begin('tap');});
 $('over').addEventListener('pointerdown', e => { e.preventDefault(); begin(lastMode); });
+$('return-hangar').addEventListener('pointerdown',e=>{
+  e.preventDefault();e.stopPropagation();$('over').classList.add('hidden');$('start').classList.remove('hidden');renderHangar();
+});
 window.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('start').classList.contains('hidden')){
-    e.preventDefault(); begin(e.key.length===1?'type':'tap');
-    if(e.key.length===1&&SIG.test(e.key))handleKey(e.key);
+    e.preventDefault();
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+      const at=CRAFT_ORDER.indexOf(selectedCraft),delta=e.key==='ArrowLeft'?-1:1;
+      selectCraft(CRAFT_ORDER[(at+delta+CRAFT_ORDER.length)%CRAFT_ORDER.length],'keyboard');
+    }else if(/^Digit[1-4]$/.test(e.code))selectCraft(CRAFT_ORDER[+e.code.slice(-1)-1],'keyboard');
+    else if(e.key==='Enter')begin('tap');
     return;
   }
   if (!$('over').classList.contains('hidden')){
-    e.preventDefault(); begin(lastMode);
+    e.preventDefault();
+    if(e.key.toLowerCase()==='h'){$('over').classList.add('hidden');$('start').classList.remove('hidden');renderHangar();}
+    else begin(lastMode);
     return;
   }
   if (e.key === 'Tab'){ e.preventDefault(); handleTab(); return; }
@@ -50,7 +86,7 @@ window.addEventListener('keydown', e => {
   if (e.key.length === 1 || e.key === 'Backspace'){ e.preventDefault(); handleKey(e.key); }
 });
 $('h-resource').addEventListener('pointerdown',e=>{
-  if(!isStormTrial())return;
+  if(!isStriker())return;
   e.preventDefault();
   const rect=$('h-resource').getBoundingClientRect();
   castStorm(e.clientX<rect.left+rect.width/2?-1:1,'hud');
@@ -63,5 +99,5 @@ window.addEventListener('blur', () => { moveInput.left = false; moveInput.right 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden){ moveInput.left = false; moveInput.right = false; }
 });
-$('start-best').textContent = 'best: ' + (+(localStorage.getItem('shooter2_best') || 0));
+renderHangar();
 resize();

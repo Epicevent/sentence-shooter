@@ -1,6 +1,10 @@
 // tap-to-lock, ZType style: the ship fires a stream of homing missiles at the locked word
 function tapAt(x, y){
   if (!g || g.over || g.viewportPaused) return;   // keyboard and pointer both live when play is visible
+  if(fireCarrierIntercept(x,y))return;
+  if(carrierBusy()){
+    $('msg').textContent=g.cargo&&g.cargo.attached?'# CARGO ATTACHED · TAP FIRES INTERCEPTOR':'# CAPTURE INBOUND · WAIT FOR ATTACH';return;
+  }
   if (g.pendingSentenceClear || g.idx >= g.sentence.length){
     $('msg').textContent='# FINAL IMPACT INBOUND · movement remains live'; return;
   }
@@ -157,6 +161,9 @@ function describeFocus(){
 // Typing only builds a visible candidate focus. It never judges grammar by itself.
 function handleKey(key){
   if (!g || g.over || g.viewportPaused) return;
+  if(carrierBusy()){
+    $('msg').textContent=g.cargo?'# CARGO ATTACHED · FLY TO THE BLINKING DOCK':'# CAPTURE INBOUND · WAIT FOR PHYSICAL IMPACT';return;
+  }
   if (g.pendingSentenceClear || g.idx >= g.sentence.length){
     $('msg').textContent='# FINAL IMPACT INBOUND · movement remains live'; return;
   }
@@ -193,6 +200,9 @@ function handleKey(key){
 // Tab is no longer an inventory item or an answer reveal. It only confirms a unique visible focus.
 function handleTab(){
   if (!g || g.over || g.viewportPaused) return;
+  if(carrierBusy()){
+    $('msg').textContent=g.cargo?'# CARGO ATTACHED · FLY TO THE BLINKING DOCK':'# CAPTURE INBOUND · WAIT FOR PHYSICAL IMPACT';return;
+  }
   if (g.pendingSentenceClear || g.idx >= g.sentence.length){
     $('msg').textContent='# FINAL IMPACT INBOUND · movement remains live'; return;
   }
@@ -235,7 +245,7 @@ function applyCorrectDefense(word,nextTarget){
   // expressed only through A's interceptor formation or B's cooling wake.
   if (nextTarget) nextTarget.threatY = nextTarget.y;
   tEv('correct_reward_route',{variant:g.variant,order:word.order,
-    route:g.variant==='A'?'interceptor_formation':g.variant==='B'?'quench_wake':'fusion_rail_blizzard',combo:g.combo});
+    route:variantConcept(g.variant),combo:g.combo});
 }
 
 function resolveWord(word){
@@ -247,6 +257,7 @@ function resolveWord(word){
   g.typePrefix = '';
   if (g.lock === word) g.lock = null;
   g.kills++; g.idx++; g.wordT = 0;
+  if(isCarrier())g.cargoPendingOrder=word.order;
   const nextTarget = g.words.find(w => !w.resolved && w.order === g.idx);
   if (nextTarget) nextTarget.threatY = nextTarget.y;
   if (!word.auto) g.combo++;
@@ -274,6 +285,7 @@ function settleWord(word, forced){
   const impact=applyPhysicalImpact(word,visualX+word.w/2,visualY+word.h/2,forced);
   tEv('settle', { order:word.order, w: word.text, lag, forced: !!forced,
     impact_cleared:impact.cleared, core_burst:impact.burst, reward:impact.reward });
+  if(impact.defer)return;
   sfx.boom(); buzz(25); shake();
   spawnParts(visualX + word.w/2, visualY + word.h/2, 14, '#d7ba7d', 160);
   spawnParts(visualX + word.w/2, visualY + word.h/2, 8, '#aef0ae', 90);
@@ -340,7 +352,8 @@ function loseLife(word){
   sfx.hit(); buzz(120); shake();
   g.lives--; g.combo = 0;
   if(hasEscort(g.variant)){shatterWing('breach');g.escortAmmo=0;}
-  if(hasStorm(g.variant)){g.coolerLevel=0;g.stormCharge=0;g.wakeNodes=[];g.sync=0;}
+  if(isStriker()){g.coolerLevel=0;g.stormCharge=0;g.wakeNodes=[];}
+  if(isPhantom())g.sync=0;
   spawnParts(g.ship.x, H - 40, 20, '#d16969', 200);
   if (g.lives <= 0){
     tEv('life_lost', { order:word.order, w: word.text, left: g.lives, before, after: traceScene(transitionAt) });
@@ -356,7 +369,9 @@ function loseLife(word){
 
 function gameOver(){
   g.over = true;
-  if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best', g.best); }
+  if (g.score > g.best){ g.best = g.score; localStorage.setItem('shooter2_best_'+g.craft, g.best); }
+  const globalBest=+(localStorage.getItem('shooter2_best')||0);if(g.score>globalBest)localStorage.setItem('shooter2_best',g.score);
+  const solvedKey='shooter2_solved_'+g.craft,solvedBest=+(localStorage.getItem(solvedKey)||0);if(g.solved>solvedBest)localStorage.setItem(solvedKey,g.solved);
   const acc = (g.kills + g.plinks) ? Math.round(100 * g.kills / (g.kills + g.plinks)) : 100;
   if (traceOn) traceSample(g.eff || g.speed);
   tEv('over', { score: g.score, solved: g.solved, acc, kills: g.kills, plinks: g.plinks,
@@ -365,7 +380,7 @@ function gameOver(){
   const recentSentences=(g.completedSentences||[]).slice(-3).map(s=>'✓ '+esc(s.reply)).join('<br>');
   const recentMistakes=(g.mistakes||[]).slice(-5).map(m=>(m.kind==='grammar'?'GRAMMAR':'ORDER')+': '+esc(m.chosen)+' → '+esc(m.expected)).join('<br>');
   $('over-stats').innerHTML =
-    'score <b style="color:var(--gold)">' + g.score + '</b><br>' +
+    '<span style="color:'+CRAFTS[g.craft].color+'">'+CRAFTS[g.craft].name+'</span><br>score <b style="color:var(--gold)">' + g.score + '</b><br>' +
     'sentences cleared: ' + g.solved + '<br>' +
     'aim discipline: ' + acc + '% (kills vs armor plinks)<br>' +
     'best: ' + g.best +

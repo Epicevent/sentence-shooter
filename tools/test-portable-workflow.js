@@ -17,12 +17,11 @@ const { createTraceServer } = require('./dev-server');
     const page=await fetch(base+'/game');
     const html=await page.text();
     assert.strictEqual(page.status,200);
-    assert.ok(html.includes('id="start-title"') && html.includes("'WING SWEEP A'") && html.includes("'WING SWEEP B'") &&
-      html.includes("'big_wing_fixed_wake'") && html.includes("'big_wing_steerable_wake'"),
-      'portable server must serve both C-based BIG WING SWEEP candidates');
+    assert.ok(html.includes('id="hangar-grid"') && ['STRIKER','PHANTOM','CARRIER','BULWARK'].every(name=>html.includes("name:'"+name+"'")),
+      'portable server must serve the visible four-aircraft 1945 hangar');
 
     const resumed=childProcess.execFileSync(process.execPath,[path.join(__dirname,'resume-check.js')],{encoding:'utf8'});
-    assert.ok(resumed.includes('<!-- CURRENT_CONTRACT_START -->') && resumed.includes('[resume] OK · build torus-27'),
+    assert.ok(resumed.includes('<!-- CURRENT_CONTRACT_START -->') && resumed.includes('[resume] OK · build torus-28'),
       'resume gate must print the whole contract and verify the live build');
 
     const source=path.join(__dirname,'..','fixtures','traces','resize-recovery-after.json');
@@ -36,7 +35,7 @@ const { createTraceServer } = require('./dev-server');
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(traceDir,files[0]))),JSON.parse(raw));
 
     const sessionId='checkpoint-test-01';
-    const checkpoint=(sampleOffset,eventOffset,samples,events)=>({meta:{pipeline:9,build:'torus-27',session_id:sessionId,
+    const checkpoint=(sampleOffset,eventOffset,samples,events)=>({meta:{pipeline:10,build:'torus-28',session_id:sessionId,
       sample_offset:sampleOffset,event_offset:eventOffset},samples,events});
     const cp1=await fetch(base+'/api/trace-checkpoint',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(checkpoint(0,0,[{t:1}],[{t:1,type:'sentence_start'}]))});
@@ -50,26 +49,20 @@ const { createTraceServer } = require('./dev-server');
     assert.deepStrictEqual(checkpointTrace.events.map(x=>x.type),['sentence_start','wake_node']);
     assert.strictEqual(checkpointTrace.meta.complete,false);
 
-    const proof=(variant,reviewer,concept,steerable)=>({meta:{pipeline:9,build:'torus-27',base_variant:'C',ab_variant:variant,reviewer,ab_concept:concept},
-      samples:[{scene:{missiles:[[100,200,0,-200,0,0,'',5,900,'escort']]}}],events:[
-      {type:'assembly_launch',route:'direct_rail_slam'},{type:'assembly_dock',route:'direct_rail_slam'},
-      {type:'assembly_launch',route:'core_link'},{type:'assembly_dock',route:'core_link'},
-      {type:'wing_deploy',after:4,normal_fire_origins:5,reward_flash_ms:260},
-      {type:'fusion_reward',escort_ammo:1,storm_level:2,storm_charge:1},{type:'escort_intercept_spent',remaining:0},
-      {type:'confirm_feedback',freeze_ms:50,correct:true},
-      {type:'storm_charge',ready:true},{type:'storm_cast',steerable,vx:78},
-      {type:'sweep_start',vy:-600,iframes_ms:1650},{type:'sweep_end',cleared:2},
-      steerable?{type:'storm_steer',before:1,after:-1}:{type:'storm_cast_blocked',reason:'active_fixed'},
-      {type:'formation_preload',item:'next'},
-      {type:'sentence_start',item:'next',streamed:true,boss:false,answer_count:4},
-      {type:'sentence_start',item:'boss',streamed:true,boss:true,answer_count:8},
-      {type:'heat_volley_armed',arrows:3,field_unchanged:true,heat_integral:.4},
-      {type:'heat_arrow_hit'},{type:'ship_hit',reason:'heat_arrow'},
-      {type:'thermal_clear_start',reason:'sentence_clear',heat_before:.4},
-      {type:'thermal_clear_end',reason:'sentence_clear',heat_before:.4,heat_after:.1}]});
+    const proof=(craft,reviewer,concept,craftEvents)=>({meta:{pipeline:10,build:'torus-28',craft,reviewer,craft_concept:concept},
+      samples:[{scene:{craft,missiles:craft==='striker'?[[100,200,0,-200,0,0,'',5,900,'escort']]:[]}}],events:[
+      {type:'sentence_start',craft},{type:'tap_input',correct:true},{type:'confirm_feedback',freeze_ms:50,correct:true},
+      {type:'heat_volley_armed',arrows:3,field_unchanged:true,heat_integral:.4},...craftEvents]});
     for(const proofTrace of[
-      proof('A','agent-storm-a','big_wing_fixed_wake',false),
-      proof('B','agent-storm-b','big_wing_steerable_wake',true)]){
+      proof('striker','agent-hangar-a','striker_escort_sweep',[
+        {type:'wing_deploy',after:4,normal_fire_origins:5},{type:'storm_charge',ready:true},{type:'storm_cast',steerable:true},
+        {type:'sweep_start',vy:-600},{type:'storm_steer',before:1,after:-1}]),
+      proof('carrier','agent-hangar-a','carrier_capture_delivery',[
+        {type:'cargo_capture'},{type:'cargo_intercept'},{type:'cargo_dock'}]),
+      proof('phantom','agent-hangar-b','phantom_graze_wipe',[
+        {type:'graze'},{type:'graze'},{type:'graze'},{type:'graze'},{type:'bullet_wipe',cleared:2}]),
+      proof('bulwark','agent-hangar-b','bulwark_counter_line',[
+        {type:'counter_line_start'},{type:'counter_reflect'},{type:'counter_line_collapse',reason:'wrong'}])]){
       const response=await fetch(base+'/api/trace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(proofTrace)});
       assert.strictEqual(response.status,200);
     }
@@ -78,7 +71,7 @@ const { createTraceServer } = require('./dev-server');
 
     const invalid=await fetch(base+'/api/trace',{method:'POST',body:'{}'});
     assert.strictEqual(invalid.status,400,'invalid telemetry must not become a session');
-    assert.strictEqual(fs.readdirSync(traceDir).filter(x=>x.endsWith('.json')).length,4);
+    assert.strictEqual(fs.readdirSync(traceDir).filter(x=>x.endsWith('.json')).length,6);
     console.log('portable agent workflow tests passed');
   } finally {
     await new Promise(resolve=>server.close(resolve));

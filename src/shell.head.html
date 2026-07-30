@@ -130,6 +130,28 @@
   .overlay .tap { color: var(--gold); letter-spacing: 3px; animation: blink 1.2s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   .overlay .stats { color: var(--phos); font-size: 14px; line-height: 1.9; }
+  .hangar-overlay { justify-content:flex-start; overflow:auto; gap:10px; padding:18px 16px 22px; cursor:default; }
+  .hangar-overlay h1 { font-size:clamp(24px,5vw,38px); }
+  .hangar-grid { width:min(960px,96vw); display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .craft-card { appearance:none; min-height:176px; padding:13px 12px 11px; border:1px solid rgba(159,154,244,.32);
+    color:var(--dim); background:rgba(10,12,24,.86); font:11px/1.45 "Cascadia Mono",Consolas,monospace;
+    text-align:left; cursor:pointer; position:relative; transition:transform .12s,border-color .12s,box-shadow .12s; }
+  .craft-card:hover { transform:translateY(-2px); border-color:rgba(232,255,255,.7); }
+  .craft-card.selected { color:var(--bright); border-color:var(--craft-color); box-shadow:0 0 24px color-mix(in srgb,var(--craft-color) 35%,transparent); }
+  .craft-card .craft-name { display:block; margin-top:5px; color:var(--craft-color); font-size:15px; letter-spacing:2px; }
+  .craft-card .craft-verb { display:block; color:#fff4b8; margin:4px 0 7px; font-size:10px; letter-spacing:1px; }
+  .craft-card .craft-detail { display:block; min-height:61px; }
+  .craft-card .craft-record { display:block; margin-top:7px; color:#667b88; font-size:9px; }
+  .craft-icon { display:block; width:58px; height:44px; margin:0 auto 3px; position:relative; filter:drop-shadow(0 0 8px var(--craft-color)); }
+  .craft-icon::before { content:""; position:absolute; inset:2px 4px; background:var(--craft-color); }
+  .craft-icon.striker::before { clip-path:polygon(50% 0,61% 42%,100% 70%,70% 68%,62% 100%,50% 75%,38% 100%,30% 68%,0 70%,39% 42%); }
+  .craft-icon.phantom::before { opacity:.82; clip-path:polygon(50% 2%,96% 72%,64% 65%,50% 98%,36% 65%,4% 72%); }
+  .craft-icon.carrier::before { clip-path:polygon(18% 17%,82% 17%,100% 58%,76% 70%,66% 100%,50% 79%,34% 100%,24% 70%,0 58%); }
+  .craft-icon.bulwark::before { clip-path:polygon(50% 0,72% 24%,100% 42%,88% 82%,62% 69%,50% 100%,38% 69%,12% 82%,0 42%,28% 24%); }
+  .hangar-rules { max-width:70em !important; font-size:11px !important; line-height:1.55 !important; }
+  .launch-button { appearance:none; border:1px solid var(--gold); background:rgba(215,186,125,.08); color:var(--gold);
+    padding:10px 28px; font:12px "Cascadia Mono",Consolas,monospace; letter-spacing:3px; cursor:pointer; }
+  .launch-button:hover,.launch-button:focus-visible { background:rgba(215,186,125,.2); outline:1px solid #fff4b8; }
   .resize-warning {
     position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center;
     padding: 20px; text-align: center; background: rgba(5,7,5,.94); color: var(--gold);
@@ -158,6 +180,9 @@
     #h-weapon { display:none; }
     #h-resource { gap:3px; }
     #prompt { left: 6px; right: 6px; font-size: 11px; }
+    .hangar-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .craft-card { min-height:168px; padding:10px; }
+    .craft-card .craft-detail { min-height:55px; font-size:10px; }
   }
   .overlay .mode-kicker { color: var(--gold); letter-spacing: 4px; font-size: 12px; }
   .hidden { display: none !important; }
@@ -179,17 +204,20 @@
   <canvas id="cv"></canvas>
   <div id="prompt" class="hidden"></div>
   <div id="resize-warning" class="resize-warning hidden">WINDOW TOO SHORT<br>ENLARGE TO RESUME</div>
-  <div id="start" class="overlay">
-    <div class="mode-kicker" id="start-mode">FUSION</div>
-    <h1 id="start-title">BREACH</h1>
-    <div class="sub" id="start-rules"></div>
-    <div class="tap">TAP OR PRESS ANY KEY TO LAUNCH</div>
+  <div id="start" class="overlay hangar-overlay">
+    <div class="mode-kicker" id="start-mode">1945 HANGAR</div>
+    <h1 id="start-title">CHOOSE YOUR CRAFT</h1>
+    <div class="sub hangar-rules" id="start-rules">Every craft drills the same reply in <b>GRAMMATICAL ORDER</b>. The aircraft changes what a correct physical impact lets you do.</div>
+    <div id="hangar-grid" class="hangar-grid" role="radiogroup" aria-label="Aircraft"></div>
+    <button id="launch" class="launch-button" type="button">LAUNCH SELECTED</button>
+    <div class="sub">←/→ SELECT · ENTER LAUNCH · IN FLIGHT: TYPE, TAB, ←/→ · SPACE REMAINS TYPING</div>
     <div class="sub" id="start-best"></div>
   </div>
   <div id="over" class="overlay hidden">
     <h1 style="color:var(--danger); text-shadow:0 0 24px rgba(220,100,100,.6)">GAME OVER</h1>
     <div class="stats" id="over-stats"></div>
     <div class="tap">TAP TO RETRY</div>
+    <button id="return-hangar" class="launch-button" type="button">HANGAR [H]</button>
   </div>
 </div>
 <div id="built">&gt;</div>

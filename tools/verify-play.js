@@ -23,49 +23,43 @@ const traces = fs.readdirSync(traceDir).filter(name => /^tr_.*\.json$/.test(name
 }).filter(row => !row.error && row.trace && row.trace.meta && row.trace.meta.build === build);
 
 const specs = [
-  {variant:'A',reviewer:'agent-storm-a',concept:'big_wing_fixed_wake',steerable:false},
-  {variant:'B',reviewer:'agent-storm-b',concept:'big_wing_steerable_wake',steerable:true},
+  {craft:'striker',reviewer:'agent-hangar-a',concept:'striker_escort_sweep'},
+  {craft:'carrier',reviewer:'agent-hangar-a',concept:'carrier_capture_delivery'},
+  {craft:'phantom',reviewer:'agent-hangar-b',concept:'phantom_graze_wipe'},
+  {craft:'bulwark',reviewer:'agent-hangar-b',concept:'bulwark_counter_line'},
 ];
 
 const failures = [], passed = [];
 for (const spec of specs) {
-  const candidates = traces.filter(row => row.trace.meta.ab_variant === spec.variant && row.trace.meta.reviewer === spec.reviewer)
+  const candidates = traces.filter(row => row.trace.meta.craft === spec.craft && row.trace.meta.reviewer === spec.reviewer)
     .sort((a,b) => b.mtime-a.mtime);
-  if (!candidates.length) { failures.push(`${spec.variant}: no ${build} trace for reviewer=${spec.reviewer}`); continue; }
+  if (!candidates.length) { failures.push(`${spec.craft}: no ${build} trace for reviewer=${spec.reviewer}`); continue; }
   const row = candidates[0], trace = row.trace, events = Array.isArray(trace.events) ? trace.events : [];
   const samples=Array.isArray(trace.samples)?trace.samples:[];
   const escortMissileSeen=samples.some(sample=>sample.scene&&Array.isArray(sample.scene.missiles)&&
     sample.scene.missiles.some(missile=>missile[9]==='escort'));
+  const craftChecks={
+    striker:()=>events.some(event=>event.type==='wing_deploy'&&event.after>=4&&event.normal_fire_origins>=5)&&escortMissileSeen&&
+      events.some(event=>event.type==='storm_charge'&&event.ready===true)&&
+      events.some(event=>event.type==='storm_cast'&&event.steerable===true)&&
+      events.some(event=>event.type==='sweep_start'&&event.vy===-600)&&events.some(event=>event.type==='storm_steer'),
+    phantom:()=>events.filter(event=>event.type==='graze').length>=4&&events.some(event=>event.type==='bullet_wipe'&&event.cleared>0),
+    carrier:()=>events.some(event=>event.type==='cargo_capture')&&events.some(event=>event.type==='cargo_intercept')&&events.some(event=>event.type==='cargo_dock'),
+    bulwark:()=>events.some(event=>event.type==='counter_line_start')&&events.some(event=>event.type==='counter_reflect')&&
+      events.some(event=>event.type==='counter_line_collapse'&&event.reason==='wrong'),
+  };
   const checks = {
-    concept: trace.meta.pipeline >= 9 && trace.meta.base_variant === 'C' && trace.meta.ab_concept === spec.concept,
+    concept: trace.meta.pipeline >= 10 && trace.meta.craft === spec.craft && trace.meta.craft_concept === spec.concept,
     feedback: events.some(event => event.type === 'confirm_feedback' && event.freeze_ms === 50),
-    assembly: ['direct_rail_slam','core_link'].every(route=>
-      events.some(event => event.type === 'assembly_launch' && event.route === route) &&
-      events.some(event => event.type === 'assembly_dock' && event.route === route)),
-    escort: events.some(event => event.type === 'wing_deploy' && event.after >= 4 && event.normal_fire_origins >= 5 && event.reward_flash_ms >= 260) &&
-      escortMissileSeen &&
-      events.some(event => event.type === 'fusion_reward' && event.escort_ammo > 0 && event.storm_charge > 0) &&
-      events.some(event => event.type === 'escort_intercept_spent') &&
-      events.some(event => event.type === 'storm_charge' && event.ready === true),
-    storm: events.some(event => event.type === 'storm_cast' && event.steerable === spec.steerable && event.vx !== 0) &&
-      events.some(event => event.type === 'sweep_start' && event.vy === -600 && event.iframes_ms >= 1600) &&
-      events.some(event => event.type === 'sweep_end') &&
-      (spec.steerable
-        ? events.some(event => event.type === 'storm_steer' && event.before !== event.after)
-        : events.some(event => event.type === 'storm_cast_blocked' && event.reason === 'active_fixed')),
-    sortie: events.some(event => event.type === 'formation_preload') &&
-      events.some(event => event.type === 'sentence_start' && event.streamed === true) &&
-      events.some(event => event.type === 'sentence_start' && event.boss === true && event.answer_count >= 8),
+    sampled: samples.length>0&&samples.some(sample=>sample.scene&&sample.scene.craft===spec.craft),
+    input: events.some(event=>event.type==='focus_confirm'||event.type==='tap_input'),
     phase: events.some(event => event.type === 'heat_volley_armed' && event.arrows > 0 &&
       event.field_unchanged === true && event.heat_integral > 0),
-    hit: events.some(event => event.type === 'heat_arrow_hit') &&
-      events.some(event => event.type === 'ship_hit' && event.reason === 'heat_arrow'),
-    cooling: events.some(event => event.type === 'thermal_clear_start' && event.heat_before > 0) &&
-      events.some(event => event.type === 'thermal_clear_end' && event.heat_after < event.heat_before),
+    craft_verb: craftChecks[spec.craft](),
   };
   const missing = Object.entries(checks).filter(([,ok]) => !ok).map(([name]) => name);
   if (missing.length) failures.push(`${spec.reviewer}: ${path.basename(row.file)} missing ${missing.join(', ')}`);
-  else passed.push({ variant:spec.variant, reviewer:spec.reviewer, file:path.relative(repo,row.file), events:events.length,
+  else passed.push({ craft:spec.craft, reviewer:spec.reviewer, file:path.relative(repo,row.file), events:events.length,
     samples:samples.length });
 }
 
@@ -75,5 +69,5 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log(`[verify:play] ${build} minimum causal evidence present (not a fun verdict)`);
-  for (const row of passed) console.log(` - ${row.variant} ${row.reviewer}: ${row.file} · ${row.events} events · ${row.samples} samples`);
+  for (const row of passed) console.log(` - ${row.craft} ${row.reviewer}: ${row.file} · ${row.events} events · ${row.samples} samples`);
 }

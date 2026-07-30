@@ -48,6 +48,9 @@ assert.strictEqual(run(`ITEMS.filter(item=>item.source&&item.source.startsWith('
 assert.strictEqual(run(`ITEMS.filter(item=>item.boss).length`),4);
 assert.strictEqual(run(`ITEMS.filter(item=>item.boss).every(item=>item.answer.length>=8&&item.answer.length<=12)`),true);
 assert.strictEqual(run(`new Set(ITEMS.map(item=>item.id)).size`),74);
+assert.deepStrictEqual(Array.from(run('CRAFT_ORDER')),['striker','phantom','carrier','bulwark'],'the 1945 hangar must expose four selectable aircraft');
+assert.ok(html.includes('id="hangar-grid"')&&html.includes('data-craft=')&&html.includes('LAUNCH SELECTED'),
+  'aircraft choice must be a visible launch-screen control rather than a hidden query flag');
 assert.ok(!html.includes('id="h-tabs"')&&!html.includes('id="h-shields"'),'removed inventories must stay removed');
 const liveHudMarkup=html.slice(html.indexOf('<div id="hud">'),html.indexOf('<div id="wrap">'));
 assert.ok(liveHudMarkup.includes('id="h-progress"')&&liveHudMarkup.includes('id="h-resource"')&&
@@ -68,8 +71,8 @@ assert.ok(!html.includes('RED ARROWS')&&!html.includes('HEAT VECTOR LOCK')&&!htm
 
 run(`startGame('type');`);
 assert.deepStrictEqual(Array.from(run(`[TRACE.meta.pipeline,TRACE.meta.build,TRACE.meta.ab_concept,g.heat.particles.length,g.heat.floorBins.length]`)),
-  [9,'torus-27','big_wing_fixed_wake',180,16]);
-assert.strictEqual(run(`$('h-variant').textContent`),'A','the HUD must name the visible A/B candidate, not its shared internal C base');
+  [10,'torus-28','hangar_striker_preset',180,16]);
+assert.strictEqual(run(`$('h-variant').textContent`),'STRIKER','the HUD must name the selected aircraft');
 assert.strictEqual(run('TRACE.meta.reviewer'),'agent-a','reviewer query must survive into trace metadata');
 assert.strictEqual(run(`g.heat.temp.every(v=>v===0)&&g.heat.floorBins.every(v=>v===0)&&g.heat.particles.every(p=>!p.active)`),true,
   'the whole torus must start at absolute zero with no visible tracers');
@@ -217,14 +220,14 @@ assert.strictEqual(run('seamSample[0]'),0,'the tracer sampler must observe the c
 assert.ok(run('seamSample[1]')>.9,'the sampler must remain aligned with non-seam grid nodes');
 
 run(`
-  g.variant='B';g.heat=createHeatField();g.words=[];g.pressureWaves=[];g.wakeNodes=[];
+  g.variant='C';g.heat=createHeatField();g.words=[];g.pressureWaves=[];g.wakeNodes=[];
   g.heat.temp.fill(.5);const localNode=addWakeNode(W*.5,2,'local-cooling');localNode.y=H*.5;localNode.radius=72;
   rasterizeCooling(g.heat);const center=heatIndex(Math.floor(HEAT_GRID_X*.5),Math.floor((localNode.y-DUST_TOP)/visibleHeight()*HEAT_GRID_Y));
   const far=heatIndex(2,8);globalThis.localSink=[g.heat.sink[center]>0,g.heat.sink[far]===0];
 `);
 assert.deepStrictEqual(Array.from(run('localSink')),[true,true],'cooling must rasterize locally instead of applying a global sink');
 run(`
-  g.variant='B';g.heat=createHeatField();g.words=[];g.wakeNodes=[];
+  g.variant='C';g.heat=createHeatField();g.words=[];g.wakeNodes=[];
   for(let i=0;i<24;i++)g.wakeNodes.push({id:i+1,x:W/2,y:H-48,t:0,life:3,radius:66,rpm:2.6});
   rasterizeCooling(g.heat);globalThis.sinkCap=Math.max(...g.heat.sink);
 `);
@@ -293,8 +296,8 @@ run(`
     TRACE.events.some(e=>e.type==='storm_cast'&&e.steerable===false),TRACE.events.some(e=>e.type==='storm_steer'),
     TRACE.events.some(e=>e.type==='storm_cast_blocked'&&e.reason==='active_fixed')];
 `);
-assert.deepStrictEqual(Array.from(run('fixedStorm')),[78,78,1,0,true,false,true],
-  'A spends one earned skill and locks the visible wake direction while it remains active');
+assert.deepStrictEqual(Array.from(run('fixedStorm')),[78,-78,-1,0,false,true,false],
+  'STRIKER spends one earned skill and can visibly reverse its active wake');
 assert.strictEqual(run(`TRACE.events.some(e=>e.type==='sweep_start'&&e.vy===-600&&e.iframes_ms===1650)`),true,
   'storm cast must start the decisive 600px/s BIG WING SWEEP and its short bomb i-frame');
 
@@ -305,12 +308,12 @@ run(`
     TRACE.events.some(e=>e.type==='storm_steer'&&e.before===1&&e.after===-1)];
 `);
 assert.deepStrictEqual(Array.from(run('steerStorm')),[39,-39,-78,-1,0,true],
-  'B spends the same skill but can reverse the active wake with Shift plus an arrow');
+  'legacy A/B presets must both preserve the selected STRIKER steering verb');
 run(`
   g.variant='C';g.experiment='A';g.coolerLevel=3;g.stormCharge=3;g.wakeNodes=[];
   globalThis.noAutoStorm=castWakeFromMovement(300,340,0,true);
 `);
-assert.strictEqual(run('noAutoStorm'),null,'ordinary movement must never auto-spend the A/B storm skill');
+assert.strictEqual(run('noAutoStorm'),null,'ordinary movement must never auto-spend the STRIKER storm skill');
 assert.ok(html.includes("if (e.key === ' ' || e.code === 'Space'){ e.preventDefault(); return; }"),
   'Space is typing cadence and must stay a no-op instead of casting the storm');
 
@@ -321,8 +324,8 @@ run(`
   globalThis.fusionReward=[g.wingUnits,g.escortAmmo,g.coolerLevel,g.pressureWaves.length,
     TRACE.events.some(e=>e.type==='fusion_reward'&&e.escort_ammo===1&&e.storm_level===2&&e.storm_charge===1)];
 `);
-assert.deepStrictEqual(Array.from(run('fusionReward')),[1,1,2,1,true],
-  'the combined build keeps both physical reward presentations but grants only one earned escort intercept and one rail wave per impact');
+assert.deepStrictEqual(Array.from(run('fusionReward')),[1,1,2,2,true],
+  'a docked STRIKER escort must add a visible normal-fire wave instead of being interception-only');
 run(`
   g.variant='C';g.experiment='A';g.coolerLevel=0;g.stormCharge=0;const later=makeWord('Later',1,300),earlier=makeWord('Earlier',0,100);
   later.impactCombo=2;earlier.impactCombo=1;boostWakeDrive(later,300,160);boostWakeDrive(earlier,100,160);
@@ -331,16 +334,50 @@ run(`
 assert.strictEqual(run('JSON.stringify(outOfOrderStorm)'),'[2,2,[[0,2],[2,2]]]',
   'a late first-word missile may not rewind STORM earned by an earlier-arriving second-word missile');
 run(`
-  g.variant='B';g.experiment='C';g.coolerLevel=3;g.wakeNodes=[];g.wakeDropT=.04;TRACE.events.length=0;
-  const nudgeBefore=320,nudgeAfter=340;castWakeFromMovement(nudgeBefore,nudgeAfter,0,true);
-  globalThis.nudgeWake=[g.wakeNodes.length,g.wakeNodes[0].x,
-    TRACE.events.some(e=>e.type==='wake_node'&&e.reason==='movement'),castWakeFromMovement(340,340,0,true)];
+  g.craft='phantom';g.variant='B';g.sync=0;g.grazes=0;g.heatArrows=[];TRACE.events.length=0;
+  const pressure=makeWord('Pressure',0,260,140);g.words=[pressure];g.idx=0;g.ship.x=320;
+  const grazeRound=spawnCraftPressureRound('phantom_pressure');awardGraze(grazeRound);
+  globalThis.phantomGraze=[grazeRound.origin,g.sync,g.grazes,TRACE.events.some(e=>e.type==='graze'&&e.after===25)];
 `);
-assert.deepStrictEqual(Array.from(run('nudgeWake')).slice(0,3),[1,340,true],
-  'a short keyboard nudge must cast the charged B blizzard even when no animation frame observes held input');
-assert.strictEqual(run('nudgeWake[3]'),null,'no-coordinate-change input must still be unable to cast a blizzard');
-assert.ok(html.includes('castWakeFromMovement(beforeNudge,g.ship.x,0,true)'),
-  'the C control must retain its old movement-only blizzard path');
+assert.deepStrictEqual(Array.from(run('phantomGraze')),['phantom_pressure',25,1,true],
+  'PHANTOM must charge SYNC only from its independent pressure round graze');
+run(`
+  const wrongRound={origin:'wrong',grazed:false};const syncBeforeWrong=g.sync;
+  const wrongGraze=awardGraze(wrongRound);
+  g.sync=SYNC_MAX;g.heatArrows=[
+    {id:9101,x:120,y:180,dead:false,origin:'phantom_pressure',nodeMarks:new Set()},
+    {id:9102,x:620,y:220,dead:false,origin:'wrong',nodeMarks:new Set()}];
+  g.phantomAbsorbs=[];const wipeWord=makeWord('Wipe',0,260,140);wipeWord.auto=false;
+  const wipe=triggerBulletWipe(260,140,wipeWord);
+  globalThis.phantomWipe=[wrongGraze,syncBeforeWrong,g.sync,wipe.cleared,g.phantomAbsorbs.length,
+    TRACE.events.some(e=>e.type==='bullet_wipe'&&e.cleared===2)];
+`);
+assert.deepStrictEqual(Array.from(run('phantomWipe')),[false,25,0,2,2,true],
+  'wrong-answer rounds must never charge PHANTOM, while a full-SYNC real hit visibly wipes every live round');
+
+run(`
+  g.craft='carrier';g.variant='D';g.cargo=null;g.cargoPendingOrder=null;g.pendingSentenceClear=false;g.score=0;g.scoreDisplay=0;
+  g.item={id:'carrier-test',ask:'?',lead:'',tail:'',answer:['Cargo','Next'],decoys:[]};g.sentence=['Cargo','Next'];g.idx=0;
+  g.visualAttached=[false,false];g.assemblyFlights=[];g.words=[];
+  const cargoWord=makeWord('Cargo',0,120,150),nextCargo=makeWord('Next',1,520,160);g.words=[cargoWord,nextCargo];
+  resolveWord(cargoWord);const lockedBeforeImpact=carrierBusy()&&g.cargoPendingOrder===0;
+  cargoWord.hp=0;settleWord(cargoWord);const dockX=g.cargo.dockX,scoreBeforeDock=g.score;g.cargo.attached=true;g.ship.x=dockX;dockCarrierCargo();
+  globalThis.carrierDelivery=[lockedBeforeImpact,scoreBeforeDock===0,g.cargo===null,g.cargoPendingOrder===null,g.score===cargoWord.pts,
+    TRACE.events.some(e=>e.type==='cargo_capture'),TRACE.events.some(e=>e.type==='cargo_dock')];
+`);
+assert.deepStrictEqual(Array.from(run('carrierDelivery')),[true,true,true,true,true,true,true],
+  'CARRIER must block the next confirmation from logical resolve through physical capture, then pay only at the opposite dock');
+
+run(`
+  g.craft='bulwark';g.variant='E';g.counterLines=[];g.counterShots=[];g.score=0;g.scoreDisplay=0;g.ship.x=300;
+  const lineWord=makeWord('Anchor',0,270,150);const planted=plantCounterLine(lineWord,300,150);const line=g.counterLines[0];
+  const counterArrow={id:9201,x:306,y:420,vx:90,vy:170,dead:false,age:.4,arm:.22,life:3,heat:.3,r:6,nodeMarks:new Set()};
+  const reflected=reflectCounterArrow(counterArrow,294,410),chargesAfter=line.charges,collapsed=collapseCounterLines('test_wrong');
+  globalThis.bulwarkCounter=[planted.reward,reflected,chargesAfter,g.counterShots.length,g.score,collapsed,g.counterLines.length,
+    TRACE.events.some(e=>e.type==='counter_reflect')];
+`);
+assert.deepStrictEqual(Array.from(run('bulwarkCounter')),['counter_line',true,3,1,20,1,0,true],
+  'BULWARK must convert a crossing round only while the ship anchors its line, and wrong collapse must remove that line');
 
 run(`
   g.variant='A';g.pressureWaves=[];g.wingUnits=0;g.pendingSentenceClear=false;g.solved=0;TRACE.events.length=0;
@@ -354,16 +391,16 @@ assert.deepStrictEqual(Array.from(run('impactOrder')),[true,0,true,false,1,1,'1,
   'an early final missile may not hang or clear the sentence before every reserved physical impact settles');
 
 run(`
-  g.variant='B';g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=80;g.wakeNodes=[];g.heatArrows=[];
+  g.variant='C';g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=80;g.wakeNodes=[];g.heatArrows=[];
   const node=addWakeNode(400,2.2,'test');node.y=H-90;node.radius=90;
   const tracer=g.heat.particles[0];tracer.armed=true;
   const arrow={id:999,tracer,x:400,y:H-90,px:400,py:H-90,vx:0,vy:220,age:.3,arm:.22,life:2,heat:.7,r:4,dead:false,nodeMarks:new Set()};
   g.heatArrows=[arrow];const speed0=Math.hypot(arrow.vx,arrow.vy);updateHeatCombat(.016);
   globalThis.wakeDeflect=[Math.hypot(arrow.vx,arrow.vy)<speed0,arrow.nodeMarks.has(node.id),TRACE.events.some(e=>e.type==='wake_deflect')];
 `);
-assert.deepStrictEqual(Array.from(run('wakeDeflect')),[true,true,true],'B wake bends and slows red arrows instead of acting as a box safe-zone');
+assert.deepStrictEqual(Array.from(run('wakeDeflect')),[true,true,true],'STRIKER wake bends and slows red rounds instead of acting as a box safe-zone');
 run(`
-  g.variant='B';g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=80;g.ship.combatX=80;g.wakeNodes=[];g.heatArrows=[];TRACE.events.length=0;
+  g.variant='C';g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=80;g.ship.combatX=80;g.wakeNodes=[];g.heatArrows=[];TRACE.events.length=0;
   const quenchStorm=addWakeNode(400,2.2,'movement');quenchStorm.y=H-90;quenchStorm.radius=180;
   const quenchArrow={id:1001,x:400,y:H-90,px:400,py:H-90,vx:0,vy:220,age:.3,arm:.22,life:3,heat:.7,r:4,dead:false,nodeMarks:new Set(),silhouette:'arrow'};
   g.heatArrows=[quenchArrow];updateHeatCombat(.16);
@@ -372,7 +409,7 @@ run(`
 assert.deepStrictEqual(Array.from(run('stormQuench')).slice(0,2),[0,true],'a red arrow crossing the earned blizzard must visibly quench');
 
 run(`
-  g.variant='B';g.coolerLevel=3;g.wakeNodes=[];g.ship.x=16;g.words=[];g.heatArrows=[];g.over=false;g.waveGraceUntil=Infinity;
+  g.variant='C';g.coolerLevel=3;g.wakeNodes=[];g.ship.x=16;g.words=[];g.heatArrows=[];g.over=false;g.waveGraceUntil=Infinity;
   moveInput.left=true;update(.3);moveInput.left=false;globalThis.edgeWake=g.wakeNodes.length;
 `);
 assert.strictEqual(run('edgeWake'),0,'holding into a wall without actual ship displacement must not stack wake nodes');
@@ -479,4 +516,4 @@ assert.deepStrictEqual(Array.from(run('heatPersists')),[.3700000047683716,.37000
 assert.strictEqual(run('paired'),true,'A/B share TOEFL content and starting geometry');
 
 assert.ok(!html.includes('fillRect(field.x-'),'rejected rectangular safe-zone rendering must stay removed');
-console.log('input pipeline torus-27 tests passed: instant confirm, streaming sorties, boss density, BIG WING SWEEP, locked red rounds, physical clears');
+console.log('input pipeline torus-28 tests passed: four-craft hangar, distinct verbs, instant confirm, locked red rounds, physical clears');

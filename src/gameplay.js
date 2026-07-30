@@ -140,7 +140,7 @@ function nextSentence(){
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   g.perRow=W<520?1:2;
   g.words=(incoming&&incoming.length?incoming:makeFormationWords(item,false)).map(w=>Object.assign(w,{y:w.targetY,incoming:false,spawnY:w.targetY}));
-  tEv('sentence_start', { solved: g.solved, speed: roundTrace(g.speed), variant:g.variant,
+  tEv('sentence_start', { solved: g.solved, speed: roundTrace(g.speed), variant:g.variant,craft:g.craft,
     concept:variantConcept(g.variant),
     item:item.id, source:item.source||null, ask:item.ask, lead:item.lead, tail:item.tail, answer_count:item.answer.length,
     sortie:stage.sortie,wave:stage.wave+1,boss:stage.boss,streamed:!!(incoming&&incoming.length),grace_ms:Math.round(g.waveGraceUntil-g.t0),
@@ -152,7 +152,7 @@ function nextSentence(){
 }
 
 function updateReserveHud(){
-  const label = isStormTrial() ? g.experiment : g.variant;
+  const label = CRAFTS[g.craft]?.name || g.craft || g.variant;
   if ($('h-variant').textContent !== label) $('h-variant').textContent = label;
 }
 
@@ -172,15 +172,26 @@ function updateHud(){
   else if(scoreBank.style) scoreBank.style['--score-fill']=scoreFill+'%';
   const attached=attachedReplyCount();
   $('h-progress').textContent = 'S'+(g.sortie||1)+' '+((g.sortieWave||0)+1)+'/4 · '+attached+'/'+g.sentence.length;
-  $('h-combat-label').textContent = isStormTrial() ? 'FUSION '+g.experiment : 'FUSION';
-  $('h-combo').textContent = isStormTrial()
-    ? 'W'+(g.wingUnits||0)+' · U'+(g.stormCharge||0)+'/'+STORM_READY_HITS
-    : 'W'+(g.wingUnits||0)+' · S'+(g.coolerLevel||0);
-  $('h-weapon').textContent = resourcePips(g.wingUnits||0,MAX_WING_UNITS)+' · '+
-    resourcePips(isStormTrial()?g.stormCharge||0:Math.ceil((g.coolerLevel||0)/3),STORM_READY_HITS);
-  const skillReady=isStormTrial()&&(g.stormCharge||0)>=STORM_READY_HITS&&!(g.wakeNodes||[]).length;
+  const craft=CRAFTS[g.craft]||CRAFTS.striker;
+  $('h-combat-label').textContent = craft.verb;
+  if(isStriker()){
+    $('h-combo').textContent='W'+(g.wingUnits||0)+' · U'+(g.stormCharge||0)+'/'+STORM_READY_HITS;
+    $('h-weapon').textContent=resourcePips(g.wingUnits||0,MAX_WING_UNITS)+' · '+resourcePips(g.stormCharge||0,STORM_READY_HITS);
+  }else if(isPhantom()){
+    $('h-combo').textContent='SYNC '+Math.round(g.sync||0)+'%';
+    $('h-weapon').textContent=resourcePips(Math.floor((g.sync||0)/GRAZE_GAIN),SYNC_MAX/GRAZE_GAIN)+' · REAL HIT = WIPE';
+  }else if(isCarrier()){
+    const dock=g.cargo?(g.cargo.dockX<W/2?'← LEFT DOCK':'RIGHT DOCK →'):(g.cargoPendingOrder!==null?'CAPTURE INBOUND':'READY');
+    $('h-combo').textContent=g.cargo?'CARGO '+(g.cargo.order+1):dock;
+    $('h-weapon').textContent=dock;
+  }else{
+    const charges=(g.counterLines||[]).reduce((n,line)=>n+Math.max(0,line.charges||0),0);
+    $('h-combo').textContent='LINES '+(g.counterLines||[]).length+' · R'+charges;
+    $('h-weapon').textContent='STAND ON GREEN LINE';
+  }
+  const skillReady=isStriker()&&(g.stormCharge||0)>=STORM_READY_HITS&&!(g.wakeNodes||[]).length;
   $('h-resource').classList.toggle('skill-ready',skillReady);
-  $('h-resource').classList.toggle('skill-active',isStormTrial()&&(g.wakeNodes||[]).length>0);
+  $('h-resource').classList.toggle('skill-active',(isStriker()&&(g.wakeNodes||[]).length>0)||(isPhantom()&&(g.sync||0)>=SYNC_MAX)||!!g.cargo);
   const density=dustBand();
   $('h-dust').innerHTML = '<b>' + density.temp.toFixed(2) + '</b>';
   const hostile=dustHazardActive();
@@ -318,7 +329,7 @@ function awardScore(points,x,y,reason){
     sfx.up(); buzz([20,28,45]);
   }
   checkExtraLife();
-  if(g.score>g.best){ g.best=g.score; localStorage.setItem('shooter2_best',g.best); }
+  if(g.score>g.best){ g.best=g.score; localStorage.setItem('shooter2_best_'+g.craft,g.best); }
   tEv('score_gain',{ points,reason:reason||'combat',score:g.score,x:roundTrace(x),y:roundTrace(y),
     target_mode:g.variant==='B'?'legacy_fixed':'hud_bank',target_x:roundTrace(target.x),target_y:roundTrace(target.y) });
   updateHud();

@@ -20,12 +20,30 @@ function update(dt){
   const eff = g.speed + Math.min(rules.hesitationCap,g.wordT*rules.hesitationAccel);
   g.eff = eff;
   const now = performance.now(), currentTarget=g.words.find(w=>!w.resolved&&w.order===g.idx);
-  const descentActive = now >= (g.waveGraceUntil || 0) && !(currentTarget&&now<(currentTarget.sweepPauseUntil||0));
+  const descentActive = now >= (g.waveGraceUntil || 0) && !carrierBusy() && !(currentTarget&&now<(currentTarget.sweepPauseUntil||0));
   const moveDir = (moveInput.right?1:0)-(moveInput.left?1:0),shipBeforeX=g.ship.x;
   if (moveDir){
     g.ship.x = Math.max(16,Math.min(W-16,g.ship.x+moveDir*330*dt));
     g.ship.manualUntil = now+180;
   }
+  if(g.cargo){
+    const q=Math.max(0,Math.min(1,(now-g.cargo.capturedAt)/g.cargo.captureLife)),ease=1-Math.pow(1-q,3);
+    g.cargo.x=g.cargo.sourceX+(g.ship.x-g.cargo.sourceX)*ease;g.cargo.y=g.cargo.sourceY+((H-54)-g.cargo.sourceY)*ease;
+    if(q>=1&&!g.cargo.attached){g.cargo.attached=true;tEv('cargo_attached',{order:g.cargo.order,x:roundTrace(g.ship.x),y:roundTrace(H-54)});}
+    dockCarrierCargo();
+  }
+  if((isPhantom()||isBulwark())&&g.combatStarted&&now>=(g.waveGraceUntil||0)){
+    g.craftFireT-=dt;
+    if(g.craftFireT<=0){spawnCraftPressureRound(isPhantom()?'phantom_pressure':'bulwark_pressure');g.craftFireT=isPhantom()?1.18:1.48;}
+  }
+  for(const line of(g.counterLines||[]))line.t+=dt;
+  const expiredLines=(g.counterLines||[]).filter(line=>line.t>=line.life);
+  for(const line of expiredLines)tEv('counter_line_end',{id:line.id,reason:'expired',charges:line.charges});
+  g.counterLines=(g.counterLines||[]).filter(line=>line.t<line.life&&line.charges>0);
+  for(const absorb of(g.phantomAbsorbs||[]))absorb.t+=dt;
+  g.phantomAbsorbs=(g.phantomAbsorbs||[]).filter(absorb=>absorb.t<absorb.life);
+  for(const shot of(g.counterShots||[])){shot.t+=dt;shot.x+=shot.vx*dt;shot.y+=shot.vy*dt;}
+  g.counterShots=(g.counterShots||[]).filter(shot=>shot.t<shot.life&&shot.y>DUST_TOP-40);
   const movedPx=Math.abs(g.ship.x-shipBeforeX);
   if(movedPx>.25&&!isStormTrial())castWakeFromMovement(shipBeforeX,g.ship.x,dt,false);
   else g.wakeDropT=Math.min(g.wakeDropT,.04);

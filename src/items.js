@@ -3,32 +3,39 @@ const AB_CONFIG = (() => {
   try {
     const params = new URLSearchParams(location.search);
     const requested=params.get('ab')?.toUpperCase();
+    const craft=(params.get('craft')||'').toLowerCase();
     return { variant:requested==='A'||requested==='B' ? requested : 'C',
       seed:Math.abs(parseInt(params.get('seed') || '20260728',10)) || 20260728,
-      reviewer:(params.get('reviewer')||'').replace(/[^a-z0-9_-]/gi,'').slice(0,32) || null };
-  } catch(e) { return { variant:'C', seed:20260728, reviewer:null }; }
+      reviewer:(params.get('reviewer')||'').replace(/[^a-z0-9_-]/gi,'').slice(0,32) || null,
+      craft:['striker','phantom','carrier','bulwark'].includes(craft)?craft:null };
+  } catch(e) { return { variant:'C', seed:20260728, reviewer:null, craft:null }; }
 })();
 const AB_VARIANT = AB_CONFIG.variant, AB_SEED = AB_CONFIG.seed;
-const BUILD_ID = 'torus-27';
-const AB_CONCEPT = AB_VARIANT === 'A' ? 'big_wing_fixed_wake' : AB_VARIANT === 'B'
-  ? 'big_wing_steerable_wake' : 'fusion_rail_blizzard_control';
-if (document.body) document.body.dataset.variant = 'C';
+const BUILD_ID = 'torus-28';
+const CRAFTS = {
+  striker:{ id:'striker', name:'STRIKER', variant:'C', color:'#73d5ee',
+    verb:'BUILD FORMATION', detail:'Correct impacts dock up to four escorts. Three impacts ready a steerable BIG WING SWEEP.' },
+  phantom:{ id:'phantom', name:'PHANTOM', variant:'B', color:'#bdb8ff',
+    verb:'GRAZE / WIPE', detail:'Graze pressure rounds to fill SYNC. A real correct impact at 100% bends every hostile round into the core.' },
+  carrier:{ id:'carrier', name:'CARRIER', variant:'D', color:'#f0bd67',
+    verb:'CAPTURE / DELIVER', detail:'A correct chunk becomes cargo. Carry it to the opposite dock before the next chunk can be confirmed.' },
+  bulwark:{ id:'bulwark', name:'BULWARK', variant:'E', color:'#aef0ae',
+    verb:'ANCHOR / REFLECT', detail:'Correct impacts plant counter lines. Stand on a line to turn crossing hostile rounds into score.' },
+};
+const CRAFT_ORDER = ['striker','phantom','carrier','bulwark'];
+const storedCraft=(()=>{try{return localStorage.getItem('shooter2_craft')}catch(e){return null}})();
+let selectedCraft = CRAFTS[AB_CONFIG.craft] ? AB_CONFIG.craft
+  : AB_VARIANT==='A' ? 'striker' : AB_VARIANT==='B' ? 'phantom'
+  : CRAFTS[storedCraft] ? storedCraft : 'striker';
+const AB_CONCEPT = AB_VARIANT === 'A' ? 'hangar_striker_preset' : AB_VARIANT === 'B'
+  ? 'hangar_phantom_preset' : 'hangar_four_craft';
+if (document.body) document.body.dataset.variant = CRAFTS[selectedCraft].variant;
 if (document.body) document.body.dataset.experiment = AB_VARIANT;
 if (document.body) document.body.dataset.concept = AB_CONCEPT;
-document.getElementById('start-mode').textContent = AB_VARIANT==='C' ? 'FUSION CONTROL' : 'FUSION TEST ' + AB_VARIANT;
-document.getElementById('start-title').textContent = AB_VARIANT === 'A' ? 'WING SWEEP A' : AB_VARIANT === 'B' ? 'WING SWEEP B' : 'THERMAL FUSION';
-document.getElementById('start-rules').innerHTML = AB_VARIANT === 'C'
-  ? 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; impacts alternate rail slam and core link.<br>' +
-    'correct hits grow the escort formation and charge the current movement-blizzard control.<br>' +
-    '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b>'
-  : 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; impacts alternate rail slam and core link.<br>' +
-    'three real hits ready one BIG WING SWEEP. <b>SHIFT+←/→</b> casts it; '+(AB_VARIANT==='B'?'press again to steer its wake.':'its wake direction stays locked.')+'<br>' +
-    '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b><br>'+
-    '<span style="color:var(--dim)">only the next chunk descends · traps arm the red heat volley · BREAK 1500 resets the field</span>';
-document.getElementById('h-variant').textContent = AB_VARIANT;
-document.getElementById('h-combat-label').textContent='FUSION';
-document.getElementById('h-combo').textContent=AB_VARIANT==='C'?'W0 · S0':'W0 · U0/3';
-document.getElementById('h-weapon').textContent='○○○○ · ○○○';
+document.getElementById('h-variant').textContent = CRAFTS[selectedCraft].name;
+document.getElementById('h-combat-label').textContent=CRAFTS[selectedCraft].verb;
+document.getElementById('h-combo').textContent='READY';
+document.getElementById('h-weapon').textContent='SELECT IN HANGAR';
 const ITEMS = [
   { id:'decision', ask:"Why hasn't the committee announced its decision?", lead:'They', tail:'.',
     answer:['are waiting','for the chair','to review','the final report'], decoys:['waited'] },

@@ -1,16 +1,16 @@
-# sentence-shooter — 에이전트 인계 문서 (2026-07-30, v27 BIG WING SWEEP·소티 기준)
+# sentence-shooter — 에이전트 인계 문서 (2026-07-30, v28 1945 격납고 기준)
 
 <!-- CURRENT_CONTRACT_START -->
 ## 압축·재개 게이트 (항상 가장 먼저 실행)
 - 이 저장소 밖의 요약은 이 문서를 대체하지 않는다. 컨텍스트 압축·새 에이전트·작업 재개 뒤에는 코드를 건드리기 전에 저장소 루트에서 `npm run resume`를 실행하고 이 파일 전체를 UTF-8로 다시 읽는다.
 - 현재 라이브 계약은 맨 아래의 가장 높은 버전 절이며, 역사 절과 충돌하면 최신 절이 우선한다. 현재 build 표식과 최신 절의 build가 다르면 작업을 완료했다고 말할 수 없다.
-- 완료 조건은 `npm test`만이 아니다. 현재 build의 A/B에서 독립 실제 플레이 trace가 하나씩 있어야 하고, 주 개발 에이전트가 분석기 요약이 아닌 두 원본 JSON 전체 시간축을 직접 읽어야 한다.
-- 독립 플레이 URL에는 A에 `reviewer=agent-storm-a`, B에 `reviewer=agent-storm-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 C의 두 조립 경로, 4기 요격기 성장과 실제 평타 발사, Tab 확정 즉시 피드백, 수동 SWEEP 충전·600px/s 대형기 관통·A의 항적 고정/B의 재조향, 다음 편대 스트리밍, 보스 문장 진입, 온도 보존 오답 탄막, 실제 피격, 실물 냉각이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
-- A/B 재미와 게임필은 김록기만 판정한다. 에이전트는 trace 인과, 관측한 조작, 회귀 여부만 보고한다.
+- 완료 조건은 `npm test`만이 아니다. STRIKER/CARRIER는 독립 플레이어 `agent-hangar-a`, PHANTOM/BULWARK는 독립 플레이어 `agent-hangar-b`의 현재 build 원본 trace가 각각 있어야 한다. 주 개발 에이전트가 분석기 요약이나 플레이어 보고가 아닌 네 JSON 전체 시간축을 직접 읽어야 한다.
+- 독립 플레이 URL은 `?craft=<craft>&reviewer=<reviewer>`를 사용한다. `npm run verify:play`는 공통 입력·온도 보존 오답과 함께 STRIKER의 4기 편대/실제 호위 평타/SWEEP, PHANTOM의 4회 그레이즈/전탄 WIPE, CARRIER의 포획/요격/도킹, BULWARK의 라인 생성/반사/오답 붕괴를 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
+- 재미와 게임필은 김록기만 판정한다. 에이전트는 trace 인과, 관측한 조작, 회귀 여부만 보고한다.
 - 김록기가 승인한 연출·규칙은 **잠금된 기준선**이다. 사용자가 명시적으로 폐지하거나 재실험 축으로 지정하기 전에는 새 수학·세계관·A/B 작업을 이유로 바꾸지 않는다. 새 요청은 명시된 축만 열며, 인접한 승인 요소를 교체할 권한으로 확대 해석하지 않는다.
 - 승인된 오답 탄막 기준선은 노란 열 표현이 같은 위치에서 붉게 무장되고, 속도 반대 방향의 11px 선형 꼬리와 원형 실루엣을 유지한 채 날아오는 v21 렌더다. v25에서 오답은 열장 tracer를 발사 원점으로 표본화할 뿐 권위 온도장과 tracer를 소비·초기화하지 않는다. 화살형을 다시 열거나 공통 색·발생 위치·220ms 예고·속도·잔상, 또는 오답 온도 보존을 바꾸려면 새 사용자 지시가 필요하다.
 - 점수 회수의 금색 다이아 실루엣·광량·35ms 간격·약 0.5초 가속 상승·도착별 count-up·마지막 HUD pulse는 build22의 잠금된 공통층이다. 현재 비교축은 도착 구도뿐이다: A는 실제 `score-bank` 중심으로 회수되는 control 복원, B는 기존 `27vw` 고정 도착점을 유지한다. 사용자 판정 전 한쪽을 다른 쪽으로 통일하지 않는다.
-- v27 A/B는 둘 다 v25 통합안 C의 레일/코어 교차 조립·열역학·오답 규칙을 그대로 쓴다. 열린 비교축은 SWEEP 뒤 냉각 항적 방향뿐이다: A는 고정, B는 재조향이다. Space는 타자 입력 리듬이므로 스킬 키로 쓰지 않는다.
+- v28은 사용자에게 A/B를 두 게임처럼 제시하지 않는다. 시작 격납고에서 네 기체를 고르며, `?ab=A/B`는 이전 링크 호환용 STRIKER/PHANTOM 사전선택일 뿐이다. Space는 타자 입력 리듬이므로 스킬 키로 쓰지 않는다.
 - 무포커스 Tab 자동조립과 shield 재고는 v23 이후 라이브 코드에서 제거된 상태가 권위다. Tab은 보이는 유일 포커스만 확정하며, 포커스가 없으면 답을 공개하거나 소비하지 않는다. 역사 절의 아이템 경제 설명은 v22 이전 기록이다.
 <!-- CURRENT_CONTRACT_END -->
 
@@ -467,3 +467,25 @@
   `formation_preload`, `confirm_feedback`, sortie/wave/boss 필드를 보존한다. 소스 권위는 `src/`의 순서 고정 fragment들이며 `npm run build`가
   루트 `index.html` 하나를 생성한다. `npm run build:check`는 생성물이 stale이면 실패하고 `npm test`의 첫 gate로 실행된다. Pages,
   `tools/dev-server.js`, TOEFL `/game`, 테스트는 계속 같은 루트 `index.html`만 읽으므로 배포·다른 PC 계약은 변하지 않는다.
+
+## v28 1945 격납고·성공 동사 4종 (2026-07-30)
+- 사용자에게 거의 같은 A/B를 별도 게임처럼 설명하던 실험을 종료한다. 시작 화면은 STRIKER, PHANTOM, CARRIER, BULWARK 네 카드가
+  동시에 보이는 1945식 격납고다. 카드 선택과 `LAUNCH SELECTED`는 분리되어 있고, 방향키/숫자 1~4/Enter와 터치를 지원한다.
+  선택 기체와 기체별 최고점·최고 clear 수는 localStorage에 분리한다. `?craft=`가 명시 선택이며 과거 `?ab=A/B`는 각각
+  STRIKER/PHANTOM을 미리 선택하는 호환 링크일 뿐 게임 규칙 비교축이 아니다.
+- STRIKER는 기존 통합 C를 맡는다. 실물 정답 명중마다 좌우 2기씩 최대 4기 편대가 붙고 각 기체는 실제 보이는 평타 발사점이다.
+  3회 명중으로 `Shift+←/→` BIG WING SWEEP을 시전하며 활성 항적은 같은 입력으로 천천히 반전한다. Space는 no-op이다.
+- PHANTOM은 호위기가 없다. 오답과 무관하게 현재 정답 위치에서 220ms 예고를 거친 압박 원형탄이 오며, 안전하게 스치고 지나간
+  탄만 SYNC 25를 준다. 오답에서 응축된 탄은 그레이즈 자원이 아니고 오답은 SYNC를 0으로 만든다. SYNC 100에서 자동이 아닌
+  정답의 실제 물리 명중이 모든 살아 있는 탄을 코어로 560ms 곡선 흡수하고 SYNC를 소비한다.
+- CARRIER는 정답 논리 확정부터 실제 탄착까지 `cargoPendingOrder`로 다음 확정을 잠근다. 실제 명중은 폭발·점수·조립을 미루고
+  청크를 함선 화물로 포획한다. 포획 위치의 반대편 점멸 도크 반경 34px에 함선이 들어가야 점수와 조립이 정산되고 다음 입력이 열린다.
+  화물 운반 중 canvas 탭/클릭은 단어 선택 대신 요격탄을 발사한다. 운반 중 편대 하강은 멈추지만 탄막과 이동은 계속된다.
+- BULWARK는 실물 정답 위치에 11초·4회 반사 세로선을 최대 3개 남긴다. 함선 중심이 선에서 26px 안에 있을 때 그 선을 가로지르는
+  원형탄만 실제로 소거·상향 반사탄 전환·20점 환전된다. 오답은 모든 선을 먼저 붕괴시킨 뒤 기존 온도 보존 붉은 탄막을 무장한다.
+- 네 기체의 TOEFL 문항, `g.idx` 어순 판정, 오답의 권위 온도 불변, 원형탄 몸체·11px 꼬리·220ms 예고, 금색 점수 회수,
+  streaming sortie와 boss는 공통이다. 기체는 수치 스킨이 아니라 편대 성장/그레이즈/운반/위치 선점이라는 서로 다른 성공 동사다.
+- trace meta build는 `torus-28`, pipeline은 10이다. meta에 `craft/craft_variant/craft_concept`, scene에 `craft`, 실제
+  cargo/dock 시간축, `phantomAbsorbs`, `counterLines/counterShots`, heat arrow의 `origin/grazed/graze_armed`를 보존한다.
+  핵심 이벤트는 `craft_round_armed`, `graze`, `bullet_wipe`, `cargo_capture/intercept/dock`,
+  `counter_line_start/reflect/collapse/end`다. 완료 검증은 위 CURRENT_CONTRACT의 두 독립 플레이어가 만든 네 원본 세션을 요구한다.

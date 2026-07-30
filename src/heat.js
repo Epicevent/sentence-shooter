@@ -199,7 +199,7 @@ function triggerDustHazard(chain,chosen){
     // A wrong answer snapshots the visible heat source into a projectile. The
     // tracer and authoritative temperature remain in the world; failure never
     // doubles as a cooling action.
-    arrows.push({id:(g.heatArrowSeq=(g.heatArrowSeq||0)+1),sourceTracerId:p.id,x,y,px:x,py:y,sourceX:x,sourceY:y,
+    arrows.push({id:(g.heatArrowSeq=(g.heatArrowSeq||0)+1),sourceTracerId:p.id,origin:'wrong',x,y,px:x,py:y,sourceX:x,sourceY:y,
       silhouette:'round',vx:dx/d*speed,vy:dy/d*speed,age:0,arm:HEAT_ARROW_ARM_MS/1000,
       life:HEAT_ARROW_ARM_MS/1000+d/speed+1.25,travelDistance:d,heat:sourceHeat,sourceHeat,
       r:Math.max(6.5,4+sourceHeat*3.2),dead:false,nodeMarks:new Set()});
@@ -233,7 +233,7 @@ function triggerQuenchBurst(reason,strength){
   return burst;
 }
 function triggerThermalClear(reason,strength){
-  const rail=hasEscort(g.variant),radial=hasStorm(g.variant);
+  const rail=isStriker(),radial=true;
   let waves=0,burst=null;
   if(rail)waves=fireWingSalvo({name:reason,combo:Math.max(1,g.combo||1),thermalClear:true},
     {maxOrigins:g.variant==='C'?4:undefined,widthScale:reason==='score_break'?2.35:1.7});
@@ -399,7 +399,9 @@ function updateHeatCombat(dt){
       }
     }
     const x0=arrow.x,y0=arrow.y;arrow.x+=arrow.vx*dt;arrow.y+=arrow.vy*dt;
+    if(reflectCounterArrow(arrow,x0,y0))continue;
     const hitR=12+arrow.r;
+    const shipDistance=Math.hypot(arrow.x-shipX1,arrow.y-shipY);
     if(movingPointDistanceSq(x0,y0,arrow.x,arrow.y,shipX0,shipY,shipX1,shipY)<hitR*hitR){
       const vulnerable=performance.now()>=(g.hitInvulnUntil||0);
       if(vulnerable){
@@ -414,6 +416,10 @@ function updateHeatCombat(dt){
         tEv('heat_arrow_contact',{id:arrow.id,reason:'iframes_hold',age_ms:Math.round(arrow.age*1000)});
       }
       break;
+    }else if(isPhantom()&&!arrow.grazed&&arrow.origin==='phantom_pressure'&&arrow.vy>0){
+      const wasArmed=!!arrow.grazeArmed;
+      if(shipDistance<GRAZE_RADIUS+arrow.r)arrow.grazeArmed=true;
+      if(wasArmed&&arrow.y>shipY+hitR)awardGraze(arrow);
     }
     if(arrow.age>arrow.life||arrow.x<-28||arrow.x>W+28||arrow.y<DUST_TOP-28||arrow.y>H+28)releaseHeatArrow(arrow,'cold_seam');
   }
