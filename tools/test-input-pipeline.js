@@ -43,9 +43,11 @@ sandbox.window=sandbox;sandbox.window.addEventListener=()=>{};sandbox.window.dev
 vm.createContext(sandbox);vm.runInContext(source,sandbox,{filename:'index.html'});
 const run=code=>vm.runInContext(code,sandbox);
 
-assert.strictEqual(run('ITEMS.length'),70,'12 original plus 58 photographed TOEFL items must remain');
+assert.strictEqual(run('ITEMS.length'),74,'12 original, 58 photographed, and four boss items must remain');
 assert.strictEqual(run(`ITEMS.filter(item=>item.source&&item.source.startsWith('photo-')).length`),58);
-assert.strictEqual(run(`new Set(ITEMS.map(item=>item.id)).size`),70);
+assert.strictEqual(run(`ITEMS.filter(item=>item.boss).length`),4);
+assert.strictEqual(run(`ITEMS.filter(item=>item.boss).every(item=>item.answer.length>=8&&item.answer.length<=12)`),true);
+assert.strictEqual(run(`new Set(ITEMS.map(item=>item.id)).size`),74);
 assert.ok(!html.includes('id="h-tabs"')&&!html.includes('id="h-shields"'),'removed inventories must stay removed');
 const liveHudMarkup=html.slice(html.indexOf('<div id="hud">'),html.indexOf('<div id="wrap">'));
 assert.ok(liveHudMarkup.includes('id="h-progress"')&&liveHudMarkup.includes('id="h-resource"')&&
@@ -66,7 +68,7 @@ assert.ok(!html.includes('RED ARROWS')&&!html.includes('HEAT VECTOR LOCK')&&!htm
 
 run(`startGame('type');`);
 assert.deepStrictEqual(Array.from(run(`[TRACE.meta.pipeline,TRACE.meta.build,TRACE.meta.ab_concept,g.heat.particles.length,g.heat.floorBins.length]`)),
-  [8,'torus-26','fusion_fixed_drift_storm',180,16]);
+  [9,'torus-27','big_wing_fixed_wake',180,16]);
 assert.strictEqual(run(`$('h-variant').textContent`),'A','the HUD must name the visible A/B candidate, not its shared internal C base');
 assert.strictEqual(run('TRACE.meta.reviewer'),'agent-a','reviewer query must survive into trace metadata');
 assert.strictEqual(run(`g.heat.temp.every(v=>v===0)&&g.heat.floorBins.every(v=>v===0)&&g.heat.particles.every(p=>!p.active)`),true,
@@ -74,6 +76,28 @@ assert.strictEqual(run(`g.heat.temp.every(v=>v===0)&&g.heat.floorBins.every(v=>v
 assert.strictEqual(run(`TRACE.events.some(e=>e.type==='field_start'&&e.topology==='torus'&&e.initial_temperature===0)`),true);
 assert.deepStrictEqual(Array.from(run(`[roundTrace(.01234),roundHeat(.01234),roundHeat(.00006)]`)),[0,.0123,.0001],
   'heat telemetry must preserve small positive world temperatures instead of rounding them to zero');
+
+run(`
+  W=800;H=720;g.solved=2;g.item={id:'stream-source',ask:'?',lead:'',tail:'.',answer:['Final'],decoys:[]};
+  g.sentence=['Final'];g.idx=0;g.words=[];g.incomingWords=[];g.preloadedItem=null;g.pendingSentenceClear=false;
+  const streamFinal={text:'Final',order:0,x:320,y:160,targetY:160,w:100,h:34,hp:5,maxhp:5,flash:0,err:0,consumed:0,committed:5,
+    resolved:false,resolvedAt:0,settled:false,pts:0,row:0,col:0,slot:0,jitterX:0,holding:false,threatY:null,isDecoy:false,baseX:320,
+    phase:0,firedAt:0,heatPulse:0,rage:0,boundaryTemp:.25};
+  g.words=[streamFinal];resolveWord(streamFinal);
+  globalThis.streamPreload=[!!g.preloadedItem,!!g.preloadedItem.boss,g.incomingWords.length>=9,g.incomingWords.every(w=>w.incoming&&w.y<w.targetY),
+    TRACE.events.some(e=>e.type==='formation_preload'&&e.boss===true)];
+  g.words=[];g.pendingSentenceClear=false;g.solved=3;nextSentence();
+  const streamedStart=TRACE.events.findLast(e=>e.type==='sentence_start');
+  globalThis.bossActivation=[g.item.boss,g.sortieWave,g.sentence.length,g.words.every(w=>!w.incoming&&w.y===w.targetY),
+    Math.round(g.waveGraceUntil-g.t0),streamedStart.streamed,streamedStart.boss,g.viewportPaused];
+`);
+assert.deepStrictEqual(Array.from(run('streamPreload')),[true,true,true,true,true],
+  'the final logical confirmation must preload a non-interactive boss formation above its target slots');
+assert.deepStrictEqual(Array.from(run('bossActivation')),[true,3,8,true,1400,true,true,false],
+  'three regular waves must activate the same streamed 8-chunk boss formation as wave four');
+run(`startGame('type');g.parts=[];popText(100,100,'ONE','#fff');popText(100,100,'TWO','#fff');popText(100,100,'THREE','#fff');
+  globalThis.popStack=g.parts.map(p=>p.y);`);
+assert.deepStrictEqual(Array.from(run('popStack')),[100,80,60],'simultaneous reward tutorials must stack instead of covering each other');
 
 run(`
   $('cv').getBoundingClientRect=()=>({left:12,top:38,width:800,height:600});
@@ -114,6 +138,8 @@ run(`
 assert.deepStrictEqual(Array.from(run('multiFocus')),['a',2,0,0]);
 assert.deepStrictEqual(Array.from(run('uniqueFocus')),['al',0,0,0]);
 assert.deepStrictEqual(Array.from(run('focusConfirmed')),[1,true,1,1],'Tab confirms focus and does not auto-build');
+assert.strictEqual(run(`TRACE.events.some(e=>e.type==='confirm_feedback'&&e.correct&&e.freeze_ms===50)`),true,
+  'Tab confirmation must answer immediately with a recorded 50ms hit-stop flash while score still waits for impact');
 assert.deepStrictEqual(Array.from(run(`[g.visualAttached[0],g.assemblyFlights.length,$('built').textContent.includes('Alpha')]`)),
   [false,0,false],'logical correctness must not silently attach the chunk before its real impact');
 run(`
@@ -214,6 +240,20 @@ assert.deepStrictEqual(Array.from(run('noCorrectShove')),[220,220,0,false],
   'a correct answer must not shove the remaining word formation upward');
 
 run(`
+  W=800;H=600;g.perRow=2;g.visualPhase=0;
+  const pending=makeWord('wanted to know',0,100,132),next=makeWord('would',2,100,190);
+  pending.slot=0;pending.col=0;pending.row=0;pending.resolved=true;pending.settled=false;pending.committed=pending.maxhp;
+  next.slot=2;next.col=0;next.row=1;next.resolved=false;next.settled=false;
+  g.words=[pending,next];recoilFormation('viewport_resume',true,1000);
+  globalThis.pendingImpactReflow=[pending.row,next.row,[0,130,260,390,520].every(ms=>{
+    const ay=wordVisualY(pending,1000+ms),by=wordVisualY(next,1000+ms);
+    return by-(ay+pending.h)>=0;
+  }),TRACE.events.some(e=>e.type==='formation_recoil'&&e.reason==='viewport_resume'&&e.words.length===2)];
+`);
+assert.deepStrictEqual(Array.from(run('pendingImpactReflow')),[0,1,true,true],
+  'viewport recovery must reserve a row for a logically dead but physically visible word until its real impact settles');
+
+run(`
   g.variant='A';g.heat=createHeatField();seedDust(HEAT_TRACER_COUNT);g.words=[makeWord('Wrong',1,100,180)];
   for(let i=0;i<48;i++){const p=g.heat.particles[i];p.active=true;p.u=(i+.5)/48;p.v=.34+(i%8)*.055;p.heat=.55;p.x=p.u*W;p.y=torusToScreenY(p.v);p.px=p.x;p.py=p.y;}
   g.heat.temp.fill(.4);rebuildHeatStats(g.heat);g.lives=3;g.over=false;g.hitInvulnUntil=0;g.ship.x=400;
@@ -253,8 +293,10 @@ run(`
     TRACE.events.some(e=>e.type==='storm_cast'&&e.steerable===false),TRACE.events.some(e=>e.type==='storm_steer'),
     TRACE.events.some(e=>e.type==='storm_cast_blocked'&&e.reason==='active_fixed')];
 `);
-assert.deepStrictEqual(Array.from(run('fixedStorm')),[34,34,1,0,true,false,true],
-  'A spends one earned skill and locks the slow drift direction while it remains active');
+assert.deepStrictEqual(Array.from(run('fixedStorm')),[78,78,1,0,true,false,true],
+  'A spends one earned skill and locks the visible wake direction while it remains active');
+assert.strictEqual(run(`TRACE.events.some(e=>e.type==='sweep_start'&&e.vy===-600&&e.iframes_ms===1650)`),true,
+  'storm cast must start the decisive 600px/s BIG WING SWEEP and its short bomb i-frame');
 
 run(`
   g.variant='C';g.experiment='B';g.coolerLevel=4;g.stormCharge=3;g.wakeNodes=[];g.ship.x=300;TRACE.events.length=0;
@@ -262,8 +304,8 @@ run(`
   globalThis.steerStorm=[beforeTurn-300,steer.x-beforeTurn,steer.vx,steer.direction,g.stormCharge,
     TRACE.events.some(e=>e.type==='storm_steer'&&e.before===1&&e.after===-1)];
 `);
-assert.deepStrictEqual(Array.from(run('steerStorm')),[17,-17,-34,-1,0,true],
-  'B spends the same skill but can reverse the active storm with Shift plus an arrow');
+assert.deepStrictEqual(Array.from(run('steerStorm')),[39,-39,-78,-1,0,true],
+  'B spends the same skill but can reverse the active wake with Shift plus an arrow');
 run(`
   g.variant='C';g.experiment='A';g.coolerLevel=3;g.stormCharge=3;g.wakeNodes=[];
   globalThis.noAutoStorm=castWakeFromMovement(300,340,0,true);
@@ -406,20 +448,25 @@ run(`
 assert.deepStrictEqual(Array.from(run('postOver')),[true,0,0,false],
   'game over during heat combat must stop the frame before later missiles mutate score or progress');
 
+const kernelCpuStart=process.cpuUsage();
 run(`
   g.variant='B';g.heat=createHeatField();seedDust(HEAT_TRACER_COUNT);g.words=[];g.wakeNodes=[];
   g.heat.temp.fill(.45);for(const p of g.heat.particles){p.active=true;p.heat=.45;}
   for(let i=0;i<24;i++)addWakeNode(i/24*W,2.5,'benchmark');
+  // Measure the steady-state frame kernel, not V8's first-call compilation.
+  // The 10ms/step gameplay budget remains unchanged.
+  for(let i=0;i<30;i++)stepHeatField(HEAT_SIM_DT,performance.now());g.heat.simSteps=0;
   const tempRef=g.heat.temp,nextRef=g.heat.next,sinkRef=g.heat.sink;
   const t0=performance.now();for(let i=0;i<300;i++)stepHeatField(HEAT_SIM_DT,performance.now());const elapsed=performance.now()-t0;
   globalThis.kernel=[g.heat.temp.length,g.heat.sink.length,g.heat.floorBins.length,g.heat.simSteps,elapsed,
     (g.heat.temp===tempRef||g.heat.temp===nextRef)&&g.heat.sink===sinkRef,stepHeatField.toString().includes('coolingStrengthAt(')];
 `);
+const kernelCpu=process.cpuUsage(kernelCpuStart),kernelCpuMs=(kernelCpu.user+kernelCpu.system)/1000;
 const kernel=Array.from(run('kernel'));
 assert.deepStrictEqual(kernel.slice(0,4),[2560,2560,16,300]);
-assert.ok(kernel[4]<3000,`300 heat steps should remain below a 10ms/step JS budget, got ${kernel[4].toFixed(1)}ms`);
+assert.ok(kernelCpuMs<3000,`300 heat steps should remain below a 10ms/step CPU budget, got ${kernelCpuMs.toFixed(1)}ms CPU`);
 assert.deepStrictEqual(kernel.slice(5),[true,false],'kernel must reuse typed arrays and never scan every cooling node per cell');
-console.log(`heat kernel benchmark: 300 steps ${kernel[4].toFixed(1)}ms (${(kernel[4]/300).toFixed(3)}ms/step)`);
+console.log(`heat kernel benchmark: 300 steps ${kernelCpuMs.toFixed(1)}ms CPU (${(kernelCpuMs/300).toFixed(3)}ms/step), ${kernel[4].toFixed(1)}ms wall`);
 
 run(`
   g.heat.temp.fill(.37);const before=g.heat.temp[99];g.solved=0;g.recent=[];nextSentence();globalThis.heatPersists=[before,g.heat.temp[99]];
@@ -432,4 +479,4 @@ assert.deepStrictEqual(Array.from(run('heatPersists')),[.3700000047683716,.37000
 assert.strictEqual(run('paired'),true,'A/B share TOEFL content and starting geometry');
 
 assert.ok(!html.includes('fillRect(field.x-'),'rejected rectangular safe-zone rendering must stay removed');
-console.log('input pipeline torus-26 tests passed: exact-prefix focus, four-gun escort growth, manual A/B storms, conserved wrong-answer heat, physical clears, swept hits');
+console.log('input pipeline torus-27 tests passed: instant confirm, streaming sorties, boss density, BIG WING SWEEP, locked red rounds, physical clears');

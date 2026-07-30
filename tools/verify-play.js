@@ -23,8 +23,8 @@ const traces = fs.readdirSync(traceDir).filter(name => /^tr_.*\.json$/.test(name
 }).filter(row => !row.error && row.trace && row.trace.meta && row.trace.meta.build === build);
 
 const specs = [
-  {variant:'A',reviewer:'agent-storm-a',concept:'fusion_fixed_drift_storm',steerable:false},
-  {variant:'B',reviewer:'agent-storm-b',concept:'fusion_steerable_drift_storm',steerable:true},
+  {variant:'A',reviewer:'agent-storm-a',concept:'big_wing_fixed_wake',steerable:false},
+  {variant:'B',reviewer:'agent-storm-b',concept:'big_wing_steerable_wake',steerable:true},
 ];
 
 const failures = [], passed = [];
@@ -37,7 +37,8 @@ for (const spec of specs) {
   const escortMissileSeen=samples.some(sample=>sample.scene&&Array.isArray(sample.scene.missiles)&&
     sample.scene.missiles.some(missile=>missile[9]==='escort'));
   const checks = {
-    concept: trace.meta.pipeline >= 8 && trace.meta.base_variant === 'C' && trace.meta.ab_concept === spec.concept,
+    concept: trace.meta.pipeline >= 9 && trace.meta.base_variant === 'C' && trace.meta.ab_concept === spec.concept,
+    feedback: events.some(event => event.type === 'confirm_feedback' && event.freeze_ms === 50),
     assembly: ['direct_rail_slam','core_link'].every(route=>
       events.some(event => event.type === 'assembly_launch' && event.route === route) &&
       events.some(event => event.type === 'assembly_dock' && event.route === route)),
@@ -47,9 +48,14 @@ for (const spec of specs) {
       events.some(event => event.type === 'escort_intercept_spent') &&
       events.some(event => event.type === 'storm_charge' && event.ready === true),
     storm: events.some(event => event.type === 'storm_cast' && event.steerable === spec.steerable && event.vx !== 0) &&
+      events.some(event => event.type === 'sweep_start' && event.vy === -600 && event.iframes_ms >= 1600) &&
+      events.some(event => event.type === 'sweep_end') &&
       (spec.steerable
         ? events.some(event => event.type === 'storm_steer' && event.before !== event.after)
         : events.some(event => event.type === 'storm_cast_blocked' && event.reason === 'active_fixed')),
+    sortie: events.some(event => event.type === 'formation_preload') &&
+      events.some(event => event.type === 'sentence_start' && event.streamed === true) &&
+      events.some(event => event.type === 'sentence_start' && event.boss === true && event.answer_count >= 8),
     phase: events.some(event => event.type === 'heat_volley_armed' && event.arrows > 0 &&
       event.field_unchanged === true && event.heat_integral > 0),
     hit: events.some(event => event.type === 'heat_arrow_hit') &&

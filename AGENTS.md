@@ -1,16 +1,17 @@
-# sentence-shooter — 에이전트 인계 문서 (2026-07-29, v26 수동 STORM A/B 기준)
+# sentence-shooter — 에이전트 인계 문서 (2026-07-30, v27 BIG WING SWEEP·소티 기준)
 
 <!-- CURRENT_CONTRACT_START -->
 ## 압축·재개 게이트 (항상 가장 먼저 실행)
 - 이 저장소 밖의 요약은 이 문서를 대체하지 않는다. 컨텍스트 압축·새 에이전트·작업 재개 뒤에는 코드를 건드리기 전에 저장소 루트에서 `npm run resume`를 실행하고 이 파일 전체를 UTF-8로 다시 읽는다.
 - 현재 라이브 계약은 맨 아래의 가장 높은 버전 절이며, 역사 절과 충돌하면 최신 절이 우선한다. 현재 build 표식과 최신 절의 build가 다르면 작업을 완료했다고 말할 수 없다.
 - 완료 조건은 `npm test`만이 아니다. 현재 build의 A/B에서 독립 실제 플레이 trace가 하나씩 있어야 하고, 주 개발 에이전트가 분석기 요약이 아닌 두 원본 JSON 전체 시간축을 직접 읽어야 한다.
-- 독립 플레이 URL에는 A에 `reviewer=agent-storm-a`, B에 `reviewer=agent-storm-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 C의 두 조립 경로, 4기 요격기 성장과 실제 평타 발사, 수동 STORM 충전·시전, A의 방향 고정/B의 재조향, 온도 보존 오답 탄막, 실제 피격, 실물 냉각이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
+- 독립 플레이 URL에는 A에 `reviewer=agent-storm-a`, B에 `reviewer=agent-storm-b`를 붙인다. `npm run verify:play`는 양쪽 trace에 C의 두 조립 경로, 4기 요격기 성장과 실제 평타 발사, Tab 확정 즉시 피드백, 수동 SWEEP 충전·600px/s 대형기 관통·A의 항적 고정/B의 재조향, 다음 편대 스트리밍, 보스 문장 진입, 온도 보존 오답 탄막, 실제 피격, 실물 냉각이 모두 있었는지만 기계적으로 확인한다. 통과는 재미 판정이 아니라 검수 증거의 최소조건이다.
 - A/B 재미와 게임필은 김록기만 판정한다. 에이전트는 trace 인과, 관측한 조작, 회귀 여부만 보고한다.
 - 김록기가 승인한 연출·규칙은 **잠금된 기준선**이다. 사용자가 명시적으로 폐지하거나 재실험 축으로 지정하기 전에는 새 수학·세계관·A/B 작업을 이유로 바꾸지 않는다. 새 요청은 명시된 축만 열며, 인접한 승인 요소를 교체할 권한으로 확대 해석하지 않는다.
 - 승인된 오답 탄막 기준선은 노란 열 표현이 같은 위치에서 붉게 무장되고, 속도 반대 방향의 11px 선형 꼬리와 원형 실루엣을 유지한 채 날아오는 v21 렌더다. v25에서 오답은 열장 tracer를 발사 원점으로 표본화할 뿐 권위 온도장과 tracer를 소비·초기화하지 않는다. 화살형을 다시 열거나 공통 색·발생 위치·220ms 예고·속도·잔상, 또는 오답 온도 보존을 바꾸려면 새 사용자 지시가 필요하다.
 - 점수 회수의 금색 다이아 실루엣·광량·35ms 간격·약 0.5초 가속 상승·도착별 count-up·마지막 HUD pulse는 build22의 잠금된 공통층이다. 현재 비교축은 도착 구도뿐이다: A는 실제 `score-bank` 중심으로 회수되는 control 복원, B는 기존 `27vw` 고정 도착점을 유지한다. 사용자 판정 전 한쪽을 다른 쪽으로 통일하지 않는다.
-- v26 A/B는 둘 다 v25 통합안 C의 레일/코어 교차 조립·열역학·오답 규칙을 그대로 쓴다. 열린 비교축은 시전 뒤 STORM 방향뿐이다: A는 고정, B는 재조향이다. Space는 타자 입력 리듬이므로 스킬 키로 쓰지 않는다.
+- v27 A/B는 둘 다 v25 통합안 C의 레일/코어 교차 조립·열역학·오답 규칙을 그대로 쓴다. 열린 비교축은 SWEEP 뒤 냉각 항적 방향뿐이다: A는 고정, B는 재조향이다. Space는 타자 입력 리듬이므로 스킬 키로 쓰지 않는다.
+- 무포커스 Tab 자동조립과 shield 재고는 v23 이후 라이브 코드에서 제거된 상태가 권위다. Tab은 보이는 유일 포커스만 확정하며, 포커스가 없으면 답을 공개하거나 소비하지 않는다. 역사 절의 아이템 경제 설명은 v22 이전 기록이다.
 <!-- CURRENT_CONTRACT_END -->
 
 김록기(계정 Epicevent)의 개인 프로젝트. TOEFL 2026 Writing의 Build-a-Sentence(어순 재배열) 훈련을
@@ -443,3 +444,26 @@
   `origin_kind`를 보존한다. `storm_charge`, `storm_cast`, `storm_steer`, `storm_cast_blocked`, 확장된 `wing_deploy`가
   입력과 시각 상태를 같은 시간축에 남긴다. 완료 검증은 A의 `reviewer=agent-storm-a`와 B의
   `reviewer=agent-storm-b` 원본 세션을 주 개발 에이전트가 직접 읽고 `npm run verify:play`를 통과해야 한다.
+
+## v27 BIG WING SWEEP·스트리밍 소티·학습 영수증 (2026-07-30)
+- v26의 24초짜리 느린 STORM을 `0~1.5초 BIG WING SWEEP + 남은 냉각 항적`으로 분리한다. 시전 순간 16광선·전화면 섬광·셰이크를 만들고,
+  대형 아군기가 함선에서 약 600px/s로 상승하며 폭 132px 회랑의 붉은 원형탄을 실제로 흡수한다. 회랑의 온도 셀은 실제로 냉각되고,
+  현재 정답 블록을 통과하면 650ms 동안 편대 전체 하강을 멈춘다. 스윕 동안 1.65초 i-frame을 부여한다. 원형탄의 몸체·11px 꼬리·220ms 예고와
+  오답의 권위 온도 보존은 바꾸지 않는다.
+- 냉각 항적 중심은 skill cast에서 함선보다 124px 위로 올라가며, 드리프트는 78px/s다. 링 자체에 실제 방향 화살을 그린다.
+  A는 시전 방향이 끝까지 잠기고 B만 같은 `Shift+←/→`로 항적을 반전한다. Space는 계속 no-op이다.
+- Tab으로 유일 포커스를 확정한 프레임에는 50ms hit-stop과 240ms 방사 플래시를 즉시 표시·기록한다. 논리 kill은 다음 입력을 열고,
+  점수·조립·호위기·SWEEP 충전은 기존대로 실제 미사일 impact에서만 정산한다. popText는 살아 있는 텍스트와 겹치면 20px씩 위로 쌓는다.
+- 오답은 decoy면 `GRAMMAR · TRAP FORM`, 아직 순서가 아닌 정답 청크면 `ORDER · RIGHT PHRASE, NOT YET`로 구분한다. 문장 완료는 1.8초 동안
+  완성 레일을 밝히고 그 문항의 `선택 → 기대 청크` 교정을 함께 보여 준다. 게임오버는 최근 완성 문장과 최근 오류 위치를 표시한다.
+- 3개 일반 문장 뒤 8청크 boss 문장으로 끝나는 4-wave sortie를 반복한다. 일반 wave는 청크 수 기준이 단계적으로 올라가고 grace는
+  3200/2600/2000ms, boss는 1400ms다. 최종 청크를 논리 확정하는 순간 다음 편대를 `incomingWords`로 미리 생성해 회색 비활성 상태로
+  155px/s 진입시키며, 입력·열원·충돌 대상에서는 제외한다. 실제 다음 문항 전환 때 같은 편대를 활성화한다. boss는 높이 620px 미만에서
+  기존 viewport pause 계약을 사용해 겹친 채 진행하지 않는다.
+- 네 개의 `boss-original` 문항을 추가해 전체 `ITEMS.length`는 74다(기존 12 + 사진 58 + boss 4). boss는 8청크이며 엔진은 여전히 단일 `g.idx`를 쓴다.
+- viewport 복원·life recoil의 안전 편대 계산은 논리상 `resolved`여도 실제 탄착 전 `settled:false`인 블록을 계속 살아 있는 행 점유자로 취급한다.
+  판정이 먼저 끝난 블록 뒤의 청크를 그 자리에 당겨 겹치게 만들면 안 되며, 테스트는 520ms 복귀 전 구간의 두 사각형 비겹침을 고정한다.
+- trace meta build는 `torus-27`, pipeline은 9다. `scene.sweeps/sweepAbsorbs/incomingWords/feedback`과 `sweep_start/absorb/end`,
+  `formation_preload`, `confirm_feedback`, sortie/wave/boss 필드를 보존한다. 소스 권위는 `src/`의 순서 고정 fragment들이며 `npm run build`가
+  루트 `index.html` 하나를 생성한다. `npm run build:check`는 생성물이 stale이면 실패하고 `npm test`의 첫 gate로 실행된다. Pages,
+  `tools/dev-server.js`, TOEFL `/game`, 테스트는 계속 같은 루트 `index.html`만 읽으므로 배포·다른 PC 계약은 변하지 않는다.

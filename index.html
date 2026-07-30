@@ -67,7 +67,8 @@
   #prompt .speaker { color: var(--gold); }
   #prompt .reply { color: var(--bright); }
   #prompt .blank { color: var(--dim); letter-spacing: 2px; }
-  #prompt .reply-rail { display:inline-flex; align-items:center; gap:4px; min-height:22px; vertical-align:middle; }
+  #prompt .reply-rail { display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px; min-height:22px;
+    max-width:calc(100% - 24px); vertical-align:middle; }
   #prompt .lead-piece { color:var(--bright); }
   #prompt .assembly-target { display:inline-block; width:2px; height:14px; vertical-align:middle; }
   #prompt .pending-piece { display:inline-block; width:18px; height:12px; border-bottom:1px dashed var(--dim); opacity:.55; }
@@ -85,10 +86,13 @@
     35%{opacity:1;box-shadow:0 0 18px #5ee6df;}100%{filter:none;box-shadow:none;} }
   #prompt.prompt-impact-a { animation:promptkickA .36s cubic-bezier(.2,1.5,.35,1); }
   #prompt.prompt-impact-b { animation:promptwaveB .55s ease-out; }
+  #prompt.sentence-complete { animation:sentencehold 1.8s ease-out; border-color:rgba(232,255,255,.9); }
   @keyframes promptkickA { 0%{transform:translateX(0);} 24%{transform:translateX(9px);border-color:var(--gold);}
     48%{transform:translateX(-4px);}100%{transform:none;} }
   @keyframes promptwaveB { 0%{box-shadow:0 0 0 rgba(94,230,223,0);} 35%{box-shadow:0 0 30px rgba(94,230,223,.65);border-color:#5ee6df;}
     100%{box-shadow:0 8px 24px rgba(5,7,5,.65);} }
+  @keyframes sentencehold { 0%{box-shadow:0 0 44px rgba(121,232,226,.85);filter:brightness(1.8);}
+    28%{box-shadow:0 0 28px rgba(121,232,226,.48);filter:brightness(1.2);}100%{box-shadow:0 8px 24px rgba(5,7,5,.65);filter:none;} }
   .assembly-flight { position:absolute; z-index:4; pointer-events:none; left:0; top:0; padding:4px 9px;
     font:12px "Cascadia Mono",Consolas,monospace; white-space:nowrap; color:#fff4b8;
     border:1px solid var(--gold); background:rgba(5,9,13,.94); box-shadow:0 0 18px rgba(240,189,103,.8);
@@ -160,6 +164,7 @@
 </style>
 </head>
 <body>
+<!-- Generated from src/* by tools/build.js. Edit source fragments, then run npm run build. -->
 <div id="hud">
   <span id="h-variant">C</span>
   <span id="h-lives">▲▲▲</span>
@@ -202,21 +207,22 @@ const AB_CONFIG = (() => {
   } catch(e) { return { variant:'C', seed:20260728, reviewer:null }; }
 })();
 const AB_VARIANT = AB_CONFIG.variant, AB_SEED = AB_CONFIG.seed;
-const BUILD_ID = 'torus-26';
-const AB_CONCEPT = AB_VARIANT === 'A' ? 'fusion_fixed_drift_storm' : AB_VARIANT === 'B'
-  ? 'fusion_steerable_drift_storm' : 'fusion_rail_blizzard_control';
+const BUILD_ID = 'torus-27';
+const AB_CONCEPT = AB_VARIANT === 'A' ? 'big_wing_fixed_wake' : AB_VARIANT === 'B'
+  ? 'big_wing_steerable_wake' : 'fusion_rail_blizzard_control';
 if (document.body) document.body.dataset.variant = 'C';
 if (document.body) document.body.dataset.experiment = AB_VARIANT;
 if (document.body) document.body.dataset.concept = AB_CONCEPT;
 document.getElementById('start-mode').textContent = AB_VARIANT==='C' ? 'FUSION CONTROL' : 'FUSION TEST ' + AB_VARIANT;
-document.getElementById('start-title').textContent = AB_VARIANT === 'A' ? 'DRIFT STORM' : AB_VARIANT === 'B' ? 'STEER STORM' : 'THERMAL FUSION';
+document.getElementById('start-title').textContent = AB_VARIANT === 'A' ? 'WING SWEEP A' : AB_VARIANT === 'B' ? 'WING SWEEP B' : 'THERMAL FUSION';
 document.getElementById('start-rules').innerHTML = AB_VARIANT === 'C'
   ? 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; impacts alternate rail slam and core link.<br>' +
     'correct hits grow the escort formation and charge the current movement-blizzard control.<br>' +
     '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b>'
   : 'destroy the reply <b>IN GRAMMATICAL ORDER</b>; impacts alternate rail slam and core link.<br>' +
-    'three real hits ready one storm. <b>SHIFT+←/→</b> casts it; '+(AB_VARIANT==='B'?'press again to steer.':'its direction stays locked.')+'<br>' +
-    '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b>';
+    'three real hits ready one BIG WING SWEEP. <b>SHIFT+←/→</b> casts it; '+(AB_VARIANT==='B'?'press again to steer its wake.':'its wake direction stays locked.')+'<br>' +
+    '<b>TYPE TO FOCUS · TAB TO CONFIRM · ← → TO DODGE</b><br>'+
+    '<span style="color:var(--dim)">only the next chunk descends · traps arm the red heat volley · BREAK 1500 resets the field</span>';
 document.getElementById('h-variant').textContent = AB_VARIANT;
 document.getElementById('h-combat-label').textContent='FUSION';
 document.getElementById('h-combo').textContent=AB_VARIANT==='C'?'W0 · S0':'W0 · U0/3';
@@ -369,6 +375,21 @@ const ITEMS = [
     answer:['encountered','some unexpected issues','that might cause','a small delay'], decoys:['that might to cause'] },
   { id:'photo-70-10-seminar', source:'photo-p70-10', ask:'What did the department chair ask you?', lead:'', tail:'.',
     answer:['He wondered','who would be','presenting at','the seminar'], decoys:['how would be'] },
+
+  // Four long-form boss sentences close each three-wave sortie. They use the same
+  // deterministic order judgement as every other item; only density and length change.
+  { id:'boss-review-vote', source:'boss-original', boss:true, ask:'Why did the committee postpone the vote?', lead:'The chair explained', tail:'.',
+    answer:['that several members','had requested','more time','to review','the evidence','before they','could vote','on the proposal'],
+    decoys:['before could they vote','have requested'] },
+  { id:'boss-secure-files', source:'boss-original', boss:true, ask:'What should new employees know about customer files?', lead:'They should remember', tail:'.',
+    answer:['that any files','containing customer data','must be stored','on the secure server','and should never','be copied','to personal devices','without authorization'],
+    decoys:['must storing','should never be copied them'] },
+  { id:'boss-research-method', source:'boss-original', boss:true, ask:'Why was the research plan revised?', lead:'The team discovered', tail:'.',
+    answer:['that the original method','would not produce','enough reliable evidence','to support','the conclusion that','the researchers had hoped','to present','at the conference'],
+    decoys:['would not produced'] },
+  { id:'boss-service-delay', source:'boss-original', boss:true, ask:'What did the director say about the delayed public service?', lead:'She acknowledged', tail:'.',
+    answer:['that the agency','should have informed','residents earlier','about the repairs','causing the interruption','and promised that','updated schedules would be posted','as soon as contractors confirmed them'],
+    decoys:['should informed'] },
 ];
 const SENTENCES = ITEMS; // compatibility name for portable harnesses
 function makeRng(seed){
@@ -452,7 +473,7 @@ function traceStart(mode){
   for (const b of activeTraceBanners.values()) b.el.remove();
   activeTraceBanners.clear();
   TRACE.meta = {
-    started: performance.now(), mode, pipeline: 8, ua: navigator.userAgent.slice(0, 60),
+    started: performance.now(), mode, pipeline: 9, ua: navigator.userAgent.slice(0, 60),
     w: W, h: H, dpr, at: Date.now(), hz: 8, build:BUILD_ID, base_variant:'C', ab_variant:AB_VARIANT, ab_seed:AB_SEED,
     reviewer:AB_CONFIG.reviewer,
     session_id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
@@ -467,6 +488,9 @@ function traceStart(mode){
     quench_burst_fields: ['id','x','y','radius','max_radius','age_ms','life_ms','strength','reason','cells'],
     heat_arrow_fields: ['id','x','y','vx','vy','age_ms','arm_ms','life_ms','heat','silhouette','chill','source_x','source_y'],
     wake_field_fields: ['id','x','y','radius','age_ms','life_ms','rpm','contacts','vx','direction'],
+    sweep_fields: ['id','x','y','vx','vy','age_ms','life_ms','corridor','direction','cleared','cooled_cells'],
+    sweep_absorb_fields: ['id','source_x','source_y','target_x','target_y','age_ms','life_ms'],
+    incoming_word_fields: ['order','render_x','render_y','target_y','w','h','is_decoy','visible'],
     assembly_flight_fields: ['id','order','route','source_x','source_y','target_x','target_y','age_ms','duration_ms'],
     interceptor_fields: ['x','y','vx','vy','target_id','age_ms','life_ms'],
     heat_field_fields: ['tracer_count','integral','floor_local','volley_count','max_temp','sim_steps','step_us','max_step_us'],
@@ -477,8 +501,9 @@ function traceStart(mode){
     ui_fields: ['score','weapon_level','built_line','message','game_over'],
     scene_fields: ['i','freeze_ms','danger','viewport_paused','pressure_y','recoil_bank',
       'delivery_ms','cargo_order','dock_x','jam_ms','move_dir','ship','lock','inventory',
-      'sync','reward','words','missiles','escortShots','particles','pulses',
-      'heat','floorBins','pressureWaves','quenchBursts','heatArrows','interceptorShots','wakeFields','assemblyFlights','banners','shake','ui'],
+      'sync','reward','feedback','words','missiles','escortShots','particles','pulses',
+      'heat','floorBins','pressureWaves','quenchBursts','heatArrows','interceptorShots','wakeFields','sweeps','sweepAbsorbs',
+      'incomingWords','assemblyFlights','banners','shake','ui'],
   };
   TRACE.samples.length = 0; TRACE.events.length = 0;
   traceCheckpointToken++;
@@ -497,7 +522,8 @@ function visiblePct(r){
   const area = rectArea(r);
   return area ? Math.round(100 * rectIntersection(r, { x: 0, y: 0, w: W, h: H }) / area) : 0;
 }
-const RECOIL_MS = 520, MIN_PLAY_HEIGHT = 500;
+const RECOIL_MS = 520, MIN_PLAY_HEIGHT = 500, MIN_BOSS_HEIGHT = 620;
+function minimumPlayHeight(){return g&&g.item&&g.item.boss?MIN_BOSS_HEIGHT:MIN_PLAY_HEIGHT;}
 function recoilProgress(w, now){
   if (!Number.isFinite(w.recoilAt)) return 1;
   return Math.max(0, Math.min(1, ((now || performance.now()) - w.recoilAt) / RECOIL_MS));
@@ -549,12 +575,16 @@ function wordVisualY(w, now){
 }
 function formationStageY(w){
   const perRow = g.perRow || 3;
-  const live = g.words.filter(x => !x.resolved);
+  // A logically resolved word is still a solid, readable formation member until
+  // its reserved projectile physically lands. Keeping it in the row model lets
+  // correctness and animation stay decoupled without a later word being reflowed
+  // into the same slot during viewport recovery or a life recoil.
+  const live = g.words.filter(x => !x.settled);
   // Resolved blocks can leave holes. Count occupied row indices, not merely live/perRow,
   // or two survivors in one column collapse onto each other during a shield/life rebound.
   const rows = Math.max(1,...live.map(x => (Number.isInteger(x.row) ? x.row : 0)+1));
   const top = W < 520 ? 104 : 112;
-  const blockH = Math.max(34,...g.words.filter(x=>!x.resolved).map(x=>x.h||34));
+  const blockH = Math.max(34,...g.words.filter(x=>!x.settled).map(x=>x.h||34));
   const safeBottom = Math.max(top,(H-64)-wingHoldClearance()-blockH-6);
   const bottom = W>=520 ? Math.max(top,Math.min(safeBottom,H-250)) : safeBottom;
   const gap = rows > 1 ? Math.min(58,(bottom-top)/(rows-1)) : 0;
@@ -593,11 +623,12 @@ function reflowViewport(oldW, oldH){
     for(const burst of(g.quenchBursts||[])){burst.x=torusWrap(burst.x*W/oldW,W);burst.maxR=thermalWorldRadius();}
   }
 
-  if (H < MIN_PLAY_HEIGHT){
+  const requiredHeight=minimumPlayHeight();
+  if (H < requiredHeight){
     if (!wasPaused){
       g.viewportPaused = true; g.viewportPauseAt = now;
       g.messageBeforePause = $('msg').innerHTML;
-      tEv('viewport_pause', { w:roundTrace(W), h:roundTrace(H), min_h:MIN_PLAY_HEIGHT });
+      tEv('viewport_pause', { w:roundTrace(W), h:roundTrace(H), min_h:requiredHeight,boss:!!(g.item&&g.item.boss) });
     }
     $('resize-warning').classList.remove('hidden');
     g.lastT = now;
@@ -639,7 +670,7 @@ function beginWordRecoil(w, to, now, railX, settleEarly, startAt){
 function stabilizeFormationRows(now){
   const columns = new Map();
   for (const w of g.words){
-    if (w.resolved) continue;
+    if (w.settled) continue;
     if (!columns.has(w.col)) columns.set(w.col, []);
     columns.get(w.col).push(w);
   }
@@ -650,10 +681,10 @@ function stabilizeFormationRows(now){
 }
 function recoilFormation(reason, visibleStart, at){
   const now = Number.isFinite(at) ? at : performance.now(), movement = [];
-  const settleEarly = g.words.some(w => !w.resolved && Math.abs(wordVisualX(w,now)-w.x)>1);
+  const settleEarly = g.words.some(w => !w.settled && Math.abs(wordVisualX(w,now)-w.x)>1);
   stabilizeFormationRows(now);
   for (const w of g.words){
-    if (w.resolved) continue;
+    if (w.settled) continue;
     w.holding = false;
     w.threatY = null;
     const target=formationStageY(w);
@@ -731,6 +762,12 @@ function traceScene(now){
   const wakeFields=(g.wakeNodes||[]).map(node=>[node.id,roundTrace(node.x),roundTrace(node.y),roundTrace(node.radius),
     Math.round(node.t*1000),Math.round(node.life*1000),roundTrace(node.rpm),node.marks||0,
     roundTrace(node.vx||0),Math.sign(node.vx||node.direction||0)]);
+  const sweeps=(g.sweeps||[]).map(s=>[s.id,roundTrace(s.x),roundTrace(s.y),roundTrace(s.vx),roundTrace(s.vy),
+    Math.round(s.t*1000),Math.round(s.life*1000),roundTrace(s.corridor),s.direction,s.cleared||0,s.cooledCells||0]);
+  const sweepAbsorbs=(g.sweepAbsorbs||[]).map(a=>[a.id,roundTrace(a.sx),roundTrace(a.sy),roundTrace(a.tx),roundTrace(a.ty),
+    Math.round(a.t*1000),Math.round(a.life*1000)]);
+  const incomingWords=(g.incomingWords||[]).map(w=>[w.order,roundTrace(w.x),roundTrace(w.y),roundTrace(w.targetY),
+    roundTrace(w.w),roundTrace(w.h),w.isDecoy?1:0,visiblePct({x:w.x,y:w.y,w:w.w,h:w.h})]);
   const assemblyFlights=(g.assemblyFlights||[]).map(f=>[f.id,f.order,f.route,roundTrace(f.sourceX),roundTrace(f.sourceY),
     roundTrace(f.targetX),roundTrace(f.targetY),Math.max(0,Math.round(now-(f.startedAt||now))),f.duration]);
   return {
@@ -745,12 +782,16 @@ function traceScene(now){
     ship: [roundTrace(g.ship.x), roundTrace(H - 34)], lock: g.lock ? g.lock.order : null,
     inv: [0, 0, g.lives, g.combo],
     sync:Math.round(g.sync||0),
+    feedback:g.confirmFlash&&now-g.confirmFlash.at<g.confirmFlash.life*1000
+      ?[roundTrace(g.confirmFlash.x),roundTrace(g.confirmFlash.y),Math.round(now-g.confirmFlash.at),
+        Math.round(g.confirmFlash.life*1000),g.confirmFlash.correct?1:0,g.confirmFlash.kind]:null,
     reward:[g.wingUnits||0,(g.wakeNodes||[]).length,g.combatStarted?1:0,
       g.combatStarted?1:0,heavyWeaponOrigins().length,g.coolerLevel||0,g.escortAmmo||0,
       g.stormCharge||0,Math.max(0,Math.round((g.rewardFlashUntil||0)-now)),g.experiment||'C',
       roundTrace(g.rewardFlashX||0),roundTrace(g.rewardFlashY||0)],
     words, missiles, escortShots, particles, pulses,
-    heat, floorBins, pressureWaves, quenchBursts, heatArrows, interceptorShots, wakeFields, assemblyFlights,
+    heat, floorBins, pressureWaves, quenchBursts, heatArrows, interceptorShots, wakeFields, sweeps, sweepAbsorbs,
+    incomingWords, assemblyFlights,
     banners, shake: $('wrap').classList.contains('shake') ? 1 : 0,
     ui: [Math.round(g.scoreDisplay||0), weaponLv(), g.builtDrawn || '', $('msg').textContent || '', g.over ? 1 : 0],
   };
@@ -831,21 +872,22 @@ function startGame(mode){
     mode: mode || 'tap',
     score: 0, combo: 0, lives: 3, solved: 0, kills: 0, plinks: 0,
     best: +(localStorage.getItem('shooter2_best') || 0),
-    ship: { x: W/2, combatX:W/2, manualUntil:0 }, missiles: [], escortShots: [], fireQueues: [], words: [], parts: [], pulses: [], stars: [],
+    ship: { x: W/2, combatX:W/2, manualUntil:0 }, missiles: [], escortShots: [], fireQueues: [], words: [], incomingWords:[], parts: [], pulses: [], stars: [],
     lock: null, typePrefix: '', freeze: 0, missGraceUntil: 0,
     shotJamUntil:0, lastMissAt:0, missChain:0,
     perfect: true, nextLife: 10000,
     wordT: 0, beatT: 0,
-    idx: 0, sentence: null, item: null, recent: [], perRow:3,
+    idx: 0, sentence: null, item: null, preloadedItem:null, recent: [], perRow:3, sortie:1, sortieWave:0,
     speed: 12, eff: 12, builtDrawn: '', visualAttached:[], assemblyFlights:[], assemblySeq:0,
     assemblyFlashOrder:-1, assemblyFlashUntil:0, viewportPaused: false, viewportPauseAt: 0,
     messageBeforePause: null, over: false, lastT: performance.now(), t0: 0,
     waveGraceUntil:0, variant:'C', experiment:AB_VARIANT, recoilBank:0,
     visualPhase:0, sync:0, grazes:0, coreBursts:0, pendingSentenceClear:false,
-    wingUnits:0, escortAmmo:0, coolerLevel:0, stormCharge:0, wakeNodes:[], heatArrows:[], interceptorShots:[], shotSeq:0, combatStarted:false,
+    wingUnits:0, escortAmmo:0, coolerLevel:0, stormCharge:0, wakeNodes:[], sweeps:[], sweepAbsorbs:[], heatArrows:[], interceptorShots:[], shotSeq:0, combatStarted:false,
     heat:createHeatField(), heatEmitT:0, pressureWaves:[], pressureWaveSeq:0, quenchBursts:[], quenchBurstSeq:0, wakeDropT:0, interceptT:0,
     scoreDisplay:0, scoreMilestone:1500, scoreTier:0, scoreMotes:[],
     rewardFlashAt:0, rewardFlashUntil:0, rewardFlashX:W/2, rewardFlashY:H-34,
+    confirmFlash:null, mistakes:[], completedSentences:[], stormHintAt:0,
   };
   moveInput.left = false; moveInput.right = false;
   for (let i = 0; i < 44; i++)
@@ -854,14 +896,14 @@ function startGame(mode){
   $('over').classList.add('hidden');
   $('prompt').classList.remove('hidden');
   $('msg').textContent = AB_VARIANT==='C' ? 'TYPE A CHUNK · TAB TO CONFIRM · ← → DODGE'
-    : 'TYPE A CHUNK · TAB TO CONFIRM · SHIFT+←/→ STORM';
+    : 'TYPE A CHUNK · TAB TO CONFIRM · SHIFT+←/→ SWEEP';
   traceStart(g.mode);
   seedDust(HEAT_TRACER_COUNT);
   tEv('field_start', { build:BUILD_ID, topology:'torus', vertical_period_screens:TORUS_VERTICAL_SCREENS,
     initial_temperature:0, tracer_cap:HEAT_TRACER_COUNT, grid:[HEAT_GRID_X,HEAT_GRID_Y],
     diffusivity:HEAT_KAPPA, sim_hz:Math.round(1/HEAT_SIM_DT), items:false });
   nextSentence();
-  if (H < MIN_PLAY_HEIGHT) reflowViewport(W, H);
+  if (H < minimumPlayHeight()) reflowViewport(W, H);
   else $('resize-warning').classList.add('hidden');
   if (!loopStarted){
     loopStarted = true;
@@ -874,7 +916,8 @@ const SIG = /[a-z0-9'-]/i;
 const MISS_BURST_MS = 220;  // one mistyped word should not become one punishment per letter
 // Combo impacts grow a symmetric formation: two escorts on each side.
 const MAX_WING_UNITS = 4;
-const STORM_READY_HITS = 3, STORM_DRIFT_SPEED = 34;
+const STORM_READY_HITS = 3, STORM_DRIFT_SPEED = 78;
+const SWEEP_SPEED = 600, SWEEP_LIFE = 1.5, SWEEP_CORRIDOR = 132;
 const HEAT_GRID_X = 64, HEAT_GRID_Y = 40, HEAT_SIM_DT = 1/30, HEAT_KAPPA = .00125;
 const HEAT_SINK_CAP = 12;
 const TORUS_VERTICAL_SCREENS = 1, HEAT_TRACER_COUNT = 180, HEAT_ARROW_ARM_MS = 220;
@@ -962,12 +1005,13 @@ function drawHeatThreat(arrow){
   const d=Math.hypot(arrow.vx,arrow.vy)||1,angle=Math.atan2(arrow.vy,arrow.vx);
   const warning=arrow.age<arrow.arm,pulse=.76+.24*Math.abs(Math.sin(performance.now()/58));
   ctx.save();ctx.translate(arrow.x,arrow.y);ctx.rotate(angle);ctx.globalAlpha=warning?pulse:1;
-  ctx.strokeStyle='#ff6e7f';ctx.fillStyle='#fff0f2';ctx.lineWidth=3;
+  ctx.strokeStyle='#ff6e7f';ctx.fillStyle='#ff5a70';ctx.lineWidth=3;
   ctx.shadowColor='#d16969';ctx.shadowBlur=15;
   // User-selected common baseline: v21 round body and exactly 11 px of
   // velocity-opposed tail. A/B no longer varies the lethal silhouette.
   ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-11,0);ctx.stroke();
   ctx.beginPath();ctx.arc(0,0,arrow.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff0f2';ctx.beginPath();ctx.arc(0,0,Math.max(1.8,arrow.r*.28),0,Math.PI*2);ctx.fill();
   if(warning){ctx.globalAlpha=.48*pulse;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,arrow.r+5,0,Math.PI*2);ctx.stroke();}
   ctx.restore();
 }
@@ -1252,6 +1296,7 @@ function fireInterceptor(target){
 }
 function updateHeatCombat(dt){
   const shipX0=Number.isFinite(g.ship.combatX)?g.ship.combatX:g.ship.x,shipX1=g.ship.x,shipY=H-34;
+  updateBigWingSweeps(dt);
   for(const node of(g.wakeNodes||[])){
     node.t+=dt;
     if(node.vx)node.x=torusWrap(node.x+node.vx*dt,W);
@@ -1349,14 +1394,58 @@ function validateItems(items){
 }
 validateItems(ITEMS);
 
-function pickSentence(){
-  const lv = Math.min(3, 1 + Math.floor(g.solved / 4));
+function sortieStageForSolved(solved){
+  const wave=Math.max(0,solved|0)%4;
+  return{sortie:Math.floor(Math.max(0,solved|0)/4)+1,wave,boss:wave===3};
+}
+function pickSentence(solvedOverride){
+  const solved=Number.isFinite(solvedOverride)?solvedOverride:g.solved;
+  const stage=sortieStageForSolved(solved),lv=Math.min(3,1+stage.wave);
   const len = item => item.answer.length;
-  let cands = ITEM_ORDER.filter(item => !g.recent.includes(item.id));
-  if (!cands.length){ g.recent = []; cands = ITEM_ORDER.slice(); }
-  const tier = cands.filter(item => lv===1 ? len(item)<=4 : lv===2 ? len(item)>=4 : len(item)>=5);
+  let cands = ITEM_ORDER.filter(item => !!item.boss===stage.boss && !g.recent.includes(item.id));
+  if (!cands.length){
+    if(stage.boss)cands=ITEM_ORDER.filter(item=>item.boss);
+    else{g.recent=g.recent.filter(id=>ITEMS.some(item=>item.id===id&&item.boss));cands=ITEM_ORDER.filter(item=>!item.boss);}
+  }
+  const tier = stage.boss?cands:cands.filter(item => lv===1 ? len(item)<=4 : lv===2 ? len(item)>=4 : len(item)>=5);
   const use = tier.length ? tier : cands;
   return use[0];
+}
+
+function makeFormationWords(item,incoming){
+  const offered=[
+    ...item.answer.map((text,order)=>({text,order,isDecoy:false})),
+    ...(item.decoys||[]).map((text,i)=>({text,order:item.answer.length+i,isDecoy:true})),
+  ];
+  const perRow=W<520?1:2,margin=8,slots=offered.map((w,i)=>i);
+  const layoutRng=makeRng(AB_SEED^textSeed(item.id));
+  for(let i=slots.length-1;i>0;i--){const j=Math.floor(layoutRng()*(i+1));[slots[i],slots[j]]=[slots[j],slots[i]];}
+  return offered.map((piece,pieceIndex)=>{
+    const {text,order,isDecoy}=piece,slot=slots[pieceIndex],row=Math.floor(slot/perRow),col=slot%perRow;
+    const laneW=(W-margin*2)/perRow,tw=ctx.measureText(text).width,bw=Math.min(laneW-10,tw+22),bh=34;
+    const jitterX=layoutRng()*12-6,x=Math.max(margin,Math.min(W-margin-bw,margin+col*laneW+(laneW-bw)/2+jitterX));
+    const rows=Math.ceil(offered.length/perRow),top=W<520?104:132;
+    const safeBottom=Math.max(top,(H-64)-wingHoldClearance()-bh-6);
+    const bottom=W>=520?Math.max(top,Math.min(safeBottom,H-250)):safeBottom;
+    const rowGap=rows>1?Math.min(58,(bottom-top)/(rows-1)):0,targetY=top+row*rowGap;
+    const hp=sigLen(text),entryOffset=Math.max(154,Math.min(220,H*.3));
+    return{text,order,x,y:incoming?targetY-entryOffset:targetY,targetY,w:bw,h:bh,hp,maxhp:hp,flash:0,consumed:0,
+      committed:0,resolved:false,resolvedAt:0,settled:false,pts:0,row,col,slot,jitterX,holding:false,threatY:null,isDecoy,baseX:x,
+      phase:layoutRng()*Math.PI*2,firedAt:0,heatPulse:0,spawnY:targetY,rage:0,boundaryTemp:.25,incoming:!!incoming};
+  });
+  if(g.preloadedItem&&(g.incomingWords||[]).length){
+    g.incomingWords=makeFormationWords(g.preloadedItem,false).map(w=>Object.assign(w,{incoming:true,y:w.targetY}));
+  }
+}
+
+function prepareIncomingFormation(){
+  if(!g||g.over||g.preloadedItem||(g.incomingWords||[]).length)return null;
+  const nextSolved=g.solved+1,item=pickSentence(nextSolved),stage=sortieStageForSolved(nextSolved);
+  if(!item)return null;
+  g.preloadedItem=item;g.incomingWords=item.boss&&H<MIN_BOSS_HEIGHT?[]:makeFormationWords(item,true);
+  tEv('formation_preload',{item:item.id,sortie:stage.sortie,wave:stage.wave+1,boss:stage.boss,
+    words:g.incomingWords.map(w=>[w.order,w.text,roundTrace(w.x),roundTrace(w.y),roundTrace(w.targetY),w.isDecoy?1:0])});
+  return item;
 }
 
 function replyText(count, cursor){
@@ -1406,15 +1495,18 @@ function nextSentence(){
   // not physically arrived by the transition deadline lands as a final cleanup blast.
   for (const w of g.words.slice()) if (w.resolved && !w.settled) settleWord(w, true);
   endHeatVolley('wave_transition');
-  const item = pickSentence();
+  const item = g.preloadedItem || pickSentence(g.solved);
+  const incoming = g.preloadedItem===item ? g.incomingWords : null;
+  g.preloadedItem=null;g.incomingWords=[];
   g.recent.push(item.id); if (g.recent.length > 12) g.recent.shift();
   g.item = item;
   g.sentence = item.answer.slice();
+  const stage=sortieStageForSolved(g.solved);g.sortie=stage.sortie;g.sortieWave=stage.wave;
   g.idx = 0; g.t0 = performance.now(); g.perfect = true; g.typePrefix = ''; g.pendingSentenceClear=false;
   for(const flight of(g.assemblyFlights||[]))flight.el.remove();
   g.visualAttached=Array(g.sentence.length).fill(false);g.assemblyFlights=[];g.assemblyFlashOrder=-1;g.assemblyFlashUntil=0;
   g.shotJamUntil = 0; g.lastMissAt = 0; g.missChain = 0;
-  g.waveGraceUntil = g.t0 + 4000;
+  g.waveGraceUntil = g.t0 + [3200,2600,2000,1400][stage.wave];
   g.combatStarted = false;
   g.heatEmitT = .42;
   g.recoilBank = 0;
@@ -1425,41 +1517,16 @@ function nextSentence(){
   g.wordT = 0;
   g.words = []; g.missiles = []; g.fireQueues = []; g.lock = null;
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
-  const offered = [
-    ...item.answer.map((text, order) => ({ text, order, isDecoy:false })),
-    ...(item.decoys || []).map((text, i) => ({ text, order:item.answer.length+i, isDecoy:true })),
-  ];
-  const perRow = W < 520 ? 1 : 2, margin = 8;
-  g.perRow = perRow;
-  const slots = offered.map((w, i) => i);
-  const layoutRng = makeRng(AB_SEED ^ textSeed(item.id));
-  for (let i = slots.length - 1; i > 0; i--){ const j = Math.floor(layoutRng()*(i+1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
-  offered.forEach((piece, pieceIndex) => {
-    const { text, order, isDecoy } = piece;
-    const slot = slots[pieceIndex];
-    const row = Math.floor(slot/perRow), col = slot%perRow;
-    const laneW = (W - margin*2) / perRow;
-    const tw = ctx.measureText(text).width, bw = Math.min(laneW - 10, tw + 22), bh = 34;
-    const jitterX = layoutRng()*12-6;
-    const x = Math.max(margin, Math.min(W - margin - bw, margin + col*laneW + (laneW-bw)/2 + jitterX));
-    const rows = Math.ceil(offered.length/perRow), top = W < 520 ? 104 : 132;
-    const safeBottom = Math.max(top,(H-64)-wingHoldClearance()-bh-6);
-    const bottom = W>=520 ? Math.max(top,Math.min(safeBottom,H-250)) : safeBottom;
-    const rowGap = rows > 1 ? Math.min(58,(bottom-top)/(rows-1)) : 0;
-    const y = top + row * rowGap;
-    const hp = sigLen(text);   // unified: letters are HP in both input styles
-    g.words.push({
-      text, order, x, y, w: bw, h: bh, hp, maxhp: hp, flash: 0, consumed: 0,
-      committed: 0, resolved: false, resolvedAt: 0, settled: false, pts: 0,
-      row, col, slot, jitterX, holding: false, threatY: null, isDecoy, baseX:x,
-      phase:layoutRng()*Math.PI*2, firedAt:0, heatPulse:0, spawnY:y, rage:0, boundaryTemp:.25,
-    });
-  });
+  g.perRow=W<520?1:2;
+  g.words=(incoming&&incoming.length?incoming:makeFormationWords(item,false)).map(w=>Object.assign(w,{y:w.targetY,incoming:false,spawnY:w.targetY}));
   tEv('sentence_start', { solved: g.solved, speed: roundTrace(g.speed), variant:g.variant,
     concept:variantConcept(g.variant),
     item:item.id, source:item.source||null, ask:item.ask, lead:item.lead, tail:item.tail, answer_count:item.answer.length,
+    sortie:stage.sortie,wave:stage.wave+1,boss:stage.boss,streamed:!!(incoming&&incoming.length),grace_ms:Math.round(g.waveGraceUntil-g.t0),
     words: g.words.map(w => [w.order, w.text, roundTrace(w.x), roundTrace(w.y),
       roundTrace(w.w), roundTrace(w.h), w.maxhp, w.isDecoy ? 1 : 0]) });
+  if(stage.boss)banner('BOSS SENTENCE · '+item.answer.length+' CHUNKS',true);
+  if(H<minimumPlayHeight())reflowViewport(W,H);
   updateHud();
 }
 
@@ -1483,7 +1550,7 @@ function updateHud(){
   if(scoreBank.style && scoreBank.style.setProperty) scoreBank.style.setProperty('--score-fill',scoreFill+'%');
   else if(scoreBank.style) scoreBank.style['--score-fill']=scoreFill+'%';
   const attached=attachedReplyCount();
-  $('h-progress').textContent = attached + ' / ' + g.sentence.length;
+  $('h-progress').textContent = 'S'+(g.sortie||1)+' '+((g.sortieWave||0)+1)+'/4 · '+attached+'/'+g.sentence.length;
   $('h-combat-label').textContent = isStormTrial() ? 'FUSION '+g.experiment : 'FUSION';
   $('h-combo').textContent = isStormTrial()
     ? 'W'+(g.wingUnits||0)+' · U'+(g.stormCharge||0)+'/'+STORM_READY_HITS
@@ -1575,7 +1642,16 @@ function spawnParts(x, y, n, color, spd){
   }
 }
 function popText(x, y, text, color){
-  g.parts.push({ x, y, vx: 0, vy: -60, life: .8, t: 0, color, text });
+  let stackedY=y;
+  for(let guard=0;guard<8&&g.parts.some(p=>p.text&&p.t<p.life&&Math.abs(p.x-x)<190&&Math.abs(p.y-stackedY)<19);guard++)stackedY-=20;
+  g.parts.push({ x, y:stackedY, vx: 0, vy: -60, life: .8, t: 0, color, text });
+}
+function showConfirmFeedback(word,correct){
+  if(!word)return;
+  const now=performance.now(),kind=correct?'correct':word.isDecoy?'grammar':'order';
+  g.confirmFlash={x:wordVisualX(word,now)+word.w/2,y:wordVisualY(word,now)+word.h/2,at:now,life:.24,correct:!!correct,kind};
+  g.freeze=Math.max(g.freeze,.05);
+  tEv('confirm_feedback',{order:word.order,w:word.text,correct:!!correct,kind,freeze_ms:50,scene:traceScene(now)});
 }
 
 function flashScore(kind){
@@ -1714,14 +1790,15 @@ function shatterWing(reason){
 }
 function addWakeNode(x,rpm,reason,direction){
   const radius=148+Math.min(9,rpm)*18;
-  const existing=(g.wakeNodes||[]).find(node=>torusDxPx(node.x,x)<54&&torusDyPx(node.y,H-48)<54);
+  const nodeY=reason==='skill_cast'?Math.max(DUST_TOP+120,H-158):H-48;
+  const existing=(g.wakeNodes||[]).find(node=>torusDxPx(node.x,x)<54&&torusDyPx(node.y,nodeY)<54);
   if(existing){
     existing.t=0;existing.rpm=Math.max(existing.rpm,rpm);existing.radius=Math.max(existing.radius,radius);
     tEv('wake_refresh',{id:existing.id,x:roundTrace(existing.x),rpm:roundTrace(existing.rpm),reason:reason||'move'});
     return existing;
   }
   const dir=Math.sign(direction||0);
-  const node={id:(g.fieldSeq=(g.fieldSeq||0)+1),x:torusWrap(x,W),y:H-48,t:0,
+  const node={id:(g.fieldSeq=(g.fieldSeq||0)+1),x:torusWrap(x,W),y:nodeY,t:0,
     life:23+Math.min(9,rpm)*.8,radius,rpm,spin:Math.random()*Math.PI*2,marks:0,
     direction:dir,vx:dir*STORM_DRIFT_SPEED};
   g.wakeNodes.push(node);
@@ -1729,6 +1806,59 @@ function addWakeNode(x,rpm,reason,direction){
   tEv('wake_node',{id:node.id,x:roundTrace(node.x),radius:roundTrace(node.radius),life_ms:Math.round(node.life*1000),
     rpm:roundTrace(rpm),reason:reason||'move',direction:dir,vx:roundTrace(node.vx)});
   return node;
+}
+function startBigWingSweep(node,direction,source){
+  const now=performance.now(),dir=Math.sign(direction||0)||1;
+  const sweep={id:(g.sweepSeq=(g.sweepSeq||0)+1),nodeId:node.id,x:g.ship.x,y:H-34,px:g.ship.x,py:H-34,
+    vx:dir*112,vy:-SWEEP_SPEED,t:0,life:SWEEP_LIFE,corridor:SWEEP_CORRIDOR,direction:dir,cleared:0,cooledCells:0,
+    cooled:new Uint8Array(HEAT_GRID_X*HEAT_GRID_Y)};
+  g.sweeps=[sweep];g.sweepAbsorbs=[];
+  g.rewardFlashAt=now;g.rewardFlashUntil=now+340;g.rewardFlashX=sweep.x;g.rewardFlashY=sweep.y;
+  g.hitInvulnUntil=Math.max(g.hitInvulnUntil||0,now+1650);
+  shake();buzz([28,38,55,28]);
+  tEv('sweep_start',{id:sweep.id,node:node.id,x:roundTrace(sweep.x),y:roundTrace(sweep.y),vx:sweep.vx,vy:sweep.vy,
+    corridor:sweep.corridor,life_ms:Math.round(sweep.life*1000),iframes_ms:1650,direction:dir,source:source||'input'});
+  return sweep;
+}
+function coolSweepSegment(sweep,x0,y0,x1,y1){
+  const field=heatField();if(!field)return 0;
+  let cooled=0;
+  for(let row=0;row<HEAT_GRID_Y;row++)for(let col=0;col<HEAT_GRID_X;col++){
+    const index=row*HEAT_GRID_X+col;if(sweep.cooled[index])continue;
+    const x=(col+.5)/HEAT_GRID_X*W,y=torusToScreenY((row+.5)/HEAT_GRID_Y);
+    if(segmentPointDistanceSq(x0,y0,x1,y1,x,y)>sweep.corridor*sweep.corridor)continue;
+    field.temp[index]*=.28;field.next[index]*=.28;sweep.cooled[index]=1;sweep.cooledCells++;cooled++;
+  }
+  if(cooled){rebuildHeatStats(field);field.vizStep=-1;}
+  return cooled;
+}
+function updateBigWingSweeps(dt){
+  const now=performance.now();
+  for(const sweep of(g.sweeps||[])){
+    const x0=sweep.x,y0=sweep.y;sweep.px=x0;sweep.py=y0;sweep.t+=dt;sweep.x+=sweep.vx*dt;sweep.y+=sweep.vy*dt;
+    coolSweepSegment(sweep,x0,y0,sweep.x,sweep.y);
+    for(const word of g.words){
+      if(word.settled)continue;
+      const wx=wordVisualX(word)+word.w/2,wy=wordVisualY(word)+word.h/2;
+      if(segmentPointDistanceSq(x0,y0,sweep.x,sweep.y,wx,wy)<(sweep.corridor+Math.max(word.w,word.h)*.32)**2){
+        word.sweepPauseUntil=Math.max(word.sweepPauseUntil||0,now+650);word.heatPulse=Math.max(word.heatPulse||0,.25);
+        word.sweepPasses=word.sweepPasses||new Set();
+        if(!word.sweepPasses.has(sweep.id)){word.sweepPasses.add(sweep.id);tEv('sweep_word_pause',{sweep:sweep.id,order:word.order,w:word.text,pause_ms:650});}
+      }
+    }
+    for(const arrow of(g.heatArrows||[])){
+      if(arrow.dead||segmentPointDistanceSq(x0,y0,sweep.x,sweep.y,arrow.x,arrow.y)>(sweep.corridor+arrow.r)**2)continue;
+      const sx=arrow.x,sy=arrow.y;releaseHeatArrow(arrow,'sweep_clear');sweep.cleared++;
+      g.sweepAbsorbs.push({id:(g.sweepAbsorbSeq=(g.sweepAbsorbSeq||0)+1),sweep:sweep.id,sx,sy,tx:sweep.x,ty:sweep.y,t:0,life:.48});
+      spawnParts(sx,sy,8,'#e8ffff',120);addPulse(sx,sy,28,'#9fe9fb',.22);
+      tEv('sweep_absorb',{sweep:sweep.id,arrow:arrow.id,x:roundTrace(sx),y:roundTrace(sy)});
+    }
+  }
+  for(const absorb of(g.sweepAbsorbs||[]))absorb.t+=dt;
+  g.sweepAbsorbs=(g.sweepAbsorbs||[]).filter(a=>a.t<a.life);
+  const ended=(g.sweeps||[]).filter(s=>s.t>=s.life||s.y<-100);
+  for(const sweep of ended)tEv('sweep_end',{id:sweep.id,cleared:sweep.cleared,cooled_cells:sweep.cooledCells,duration_ms:Math.round(sweep.t*1000)});
+  g.sweeps=(g.sweeps||[]).filter(s=>s.t<s.life&&s.y>=-100);
 }
 function castWakeFromMovement(beforeX,afterX,dt,immediate){
   const movedPx=Math.abs(afterX-beforeX);
@@ -1753,7 +1883,7 @@ function boostWakeDrive(word,x,y){
     const chargeBefore=g.stormCharge||0;
     g.stormCharge=Math.min(STORM_READY_HITS,chargeBefore+1);
     const ready=g.stormCharge>=STORM_READY_HITS;
-    popText(g.ship.x,H-102,ready?'STORM READY · SHIFT+←/→':'STORM CHARGE '+g.stormCharge+'/'+STORM_READY_HITS,'#b5fffa');
+    popText(g.ship.x,H-102,ready?'SWEEP READY · SHIFT+←/→':'SWEEP CHARGE '+g.stormCharge+'/'+STORM_READY_HITS,'#b5fffa');
     tEv('storm_charge',{order:word.order,combo,before:chargeBefore,after:g.stormCharge,power:g.coolerLevel,ready});
     tEv('wake_drive',{order:word.order,id:null,rpm:roundTrace(rpm),combo,before,after:g.coolerLevel,
       radius:roundTrace(radius),movement_only:false,manual_skill:true,charge:g.stormCharge});
@@ -1774,23 +1904,24 @@ function castStorm(direction,source){
       const before=Math.sign(active.vx||active.direction||0);
       active.direction=dir;active.vx=dir*STORM_DRIFT_SPEED;
       tEv('storm_steer',{id:active.id,before,after:dir,vx:roundTrace(active.vx),source:source||'input',scene:traceScene()});
-      popText(active.x,active.y-active.radius*.62,dir<0?'STORM DRIFT ←':'STORM DRIFT →','#b5fffa');
+      popText(active.x,active.y-active.radius*.62,dir<0?'WAKE DRIFT ←':'WAKE DRIFT →','#b5fffa');
       tone(680,420,.07,'sine',.035);updateHud();return active;
     }
     tEv('storm_cast_blocked',{reason:'active_fixed',direction:dir,source:source||'input',scene:traceScene()});
-    $('msg').textContent='STORM ACTIVE · A locks its launch direction';sfx.plink();return null;
+    $('msg').textContent='WAKE ACTIVE · A locks its launch direction';sfx.plink();return null;
   }
   if((g.stormCharge||0)<STORM_READY_HITS){
     tEv('storm_cast_blocked',{reason:'not_ready',charge:g.stormCharge||0,direction:dir,source:source||'input',scene:traceScene()});
-    $('msg').textContent='STORM '+(g.stormCharge||0)+'/'+STORM_READY_HITS+' · land real hits to charge';sfx.plink();return null;
+    $('msg').textContent='SWEEP '+(g.stormCharge||0)+'/'+STORM_READY_HITS+' · land real hits to charge';sfx.plink();return null;
   }
   const power=Math.max(1,g.coolerLevel||1),rpm=1+Math.min(9,power)*.18;
   const node=addWakeNode(g.ship.x,rpm,'skill_cast',dir);
   const spent=g.stormCharge;g.stormCharge=0;g.coolerLevel=0;
-  addPulse(node.x,node.y,node.radius*.92,'#e8ffff',.5);spawnParts(node.x,node.y,22,'#b5fffa',150);
-  banner(dir<0?'STORM CAST ←':'STORM CAST →',true);tone(260,980,.18,'sawtooth',.07);buzz([18,24,18]);
+  const sweep=startBigWingSweep(node,dir,source);
+  addPulse(node.x,node.y,node.radius*.92,'#e8ffff',.5);spawnParts(node.x,node.y,34,'#b5fffa',190);
+  banner(dir<0?'BIG WING SWEEP ←':'BIG WING SWEEP →',true);tone(180,1080,.28,'sawtooth',.09);
   tEv('storm_cast',{id:node.id,direction:dir,vx:roundTrace(node.vx),rpm:roundTrace(rpm),power,spent,
-    source:source||'input',steerable:g.experiment==='B',scene:traceScene()});
+    source:source||'input',steerable:g.experiment==='B',sweep:sweep.id,scene:traceScene()});
   updateHud();return node;
 }
 function empowerEnemy(word){
@@ -1867,6 +1998,8 @@ function applyWrongPenalty(chosen, detail){
   g.shotJamUntil = 0;
   g.missGraceUntil = now + MISS_BURST_MS;
   const comboLost=g.combo||0, flowLost=0;
+  const expected=g.words.find(w=>!w.resolved&&w.order===g.idx),mistakeKind=chosen&&chosen.isDecoy?'grammar':'order';
+  if(chosen)g.mistakes.push({item:g.item&&g.item.id,kind:mistakeKind,chosen:chosen.text,expected:expected?expected.text:'',order:g.idx,t:Math.round(now-TRACE.meta.started)});
   const boundaryBefore=chosen?wordBoundaryTemperature(chosen):0;
   const rage=chosen?empowerEnemy(chosen):0;
   const boundaryAfter=chosen?wordBoundaryTemperature(chosen):0;
@@ -1884,7 +2017,7 @@ function applyWrongPenalty(chosen, detail){
 
   const retaliation = (g.heatArrows||[]).filter(a=>!a.dead).length;
   tEv('miss', Object.assign({
-    order:chosen ? chosen.order : null, w:chosen ? chosen.text : '', chain, jam, retaliation,
+    order:chosen ? chosen.order : null, w:chosen ? chosen.text : '', mistake_kind:mistakeKind, chain, jam, retaliation,
     lunge, time_lost:roundTrace(timeLost), bank_lost:roundTrace(bankLost),
     score_lost:actualScoreLost, score_loss_requested:scoreLost, combo_lost:comboLost, flow_lost:flowLost,
     reward_lost:rewardLost, floor_heat:floorHeat,boundary_before:roundTrace(boundaryBefore),
@@ -1892,7 +2025,7 @@ function applyWrongPenalty(chosen, detail){
   },detail || {}));
   if(actualScoreLost)popText(chosen?wordVisualX(chosen)+chosen.w/2:g.ship.x,
     chosen?wordVisualY(chosen)-8:H-62,'-'+actualScoreLost,'#f08b8b');
-  $('msg').innerHTML = '<span style="color:var(--danger)">WRONG · '+retaliation+' RED ROUNDS</span>' +
+  $('msg').innerHTML = '<span style="color:var(--danger)">'+(mistakeKind==='grammar'?'GRAMMAR · TRAP FORM':'ORDER · RIGHT PHRASE, NOT YET')+' · '+retaliation+' RED ROUNDS</span>' +
     (actualScoreLost?' · -'+actualScoreLost:'')+' · <span style="color:var(--bright)">MOVE · NEXT INPUT READY</span>';
   updateHud();
 }
@@ -2105,6 +2238,7 @@ function handleTab(){
     const chosen=equivalentTarget(state.chosen), correct=chosen.order===g.idx;
     armCombat('focus_confirm');
     tEv('focus_confirm',{ prefix, order:chosen.order, w:chosen.text, correct, scene:traceScene() });
+    showConfirmFeedback(chosen,correct);
     g.typePrefix=''; g.lock=null;
     if (correct){
       g.missChain=0; g.lock=chosen;
@@ -2158,7 +2292,7 @@ function resolveWord(word){
   const pts = Math.round(word.auto ? base/2 : base);
   word.pts = pts;
   tEv('kill', { order:word.order, w: word.text, auto: !!word.auto, c: g.combo, pts });
-  if (finalChunk) g.pendingSentenceClear=true;
+  if (finalChunk){g.pendingSentenceClear=true;prepareIncomingFormation();}
   updateHud();
 }
 
@@ -2196,6 +2330,7 @@ function sentenceClear(){
   }
   endHeatVolley('wave_clear');
   const scoreTierBeforeClear=g.scoreTier;
+  const completedItem=g.item&&g.item.id,currentMistakes=g.mistakes.filter(m=>m.item===completedItem);
   g.solved++;
   const secs = Math.round((performance.now() - g.t0)/1000);
   const bonus = Math.max(0, 150 - secs*4);
@@ -2216,10 +2351,18 @@ function sentenceClear(){
   }
   const thermal=g.scoreTier===scoreTierBeforeClear?triggerThermalClear('sentence_clear',.52):{kind:'score_break'};
   checkExtraLife();
-  tEv('clear', { len: g.sentence.length, secs, perfect: g.perfect,thermal_clear:thermal.kind });
-  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(fullReply()) + '</span> +' + bonus +
-    (reserveBonus ? ' <span style="color:var(--gold)">+R' + reserveBonus + '</span>' : '') + earned;
-  setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 700);
+  const reply=fullReply();
+  g.completedSentences.push({item:completedItem,reply,secs,mistakes:currentMistakes.length});
+  if(g.completedSentences.length>12)g.completedSentences.shift();
+  tEv('clear', { len: g.sentence.length, secs, perfect: g.perfect,thermal_clear:thermal.kind,
+    sortie:g.sortie,wave:g.sortieWave+1,boss:!!(g.item&&g.item.boss),mistake_count:currentMistakes.length });
+  const correction=currentMistakes.length?' · <span style="color:var(--gold)">'+currentMistakes.slice(-2).map(m=>
+    esc(m.chosen)+' → '+esc(m.expected)).join(' · ')+'</span>':'';
+  $('msg').innerHTML = '<span style="color:var(--bright)">✓ ' + esc(reply) + '</span> +' + bonus +
+    (reserveBonus ? ' <span style="color:var(--gold)">+R' + reserveBonus + '</span>' : '') + earned+correction;
+  $('prompt').classList.add('sentence-complete');
+  setTimeout(()=>{if(g)$('prompt').classList.remove('sentence-complete');},1800);
+  setTimeout(()=>{ if (g && !g.over) nextSentence(); }, 1800);
 }
 
 function loseLife(word){
@@ -2251,11 +2394,15 @@ function gameOver(){
   tEv('over', { score: g.score, solved: g.solved, acc, kills: g.kills, plinks: g.plinks,
     items:false, heat_integral:roundHeat(g.heat.totalMass||0), particles:g.heat.particles.length });
   traceSend();
+  const recentSentences=(g.completedSentences||[]).slice(-3).map(s=>'✓ '+esc(s.reply)).join('<br>');
+  const recentMistakes=(g.mistakes||[]).slice(-5).map(m=>(m.kind==='grammar'?'GRAMMAR':'ORDER')+': '+esc(m.chosen)+' → '+esc(m.expected)).join('<br>');
   $('over-stats').innerHTML =
     'score <b style="color:var(--gold)">' + g.score + '</b><br>' +
     'sentences cleared: ' + g.solved + '<br>' +
     'aim discipline: ' + acc + '% (kills vs armor plinks)<br>' +
-    'best: ' + g.best;
+    'best: ' + g.best +
+    (recentSentences?'<br><br><span style="color:var(--bright)">ASSEMBLED</span><br>'+recentSentences:'')+
+    (recentMistakes?'<br><br><span style="color:var(--gold)">REVIEW</span><br>'+recentMistakes:'');
   $('over').classList.remove('hidden');
   updateHud();
 }
@@ -2276,11 +2423,13 @@ function update(dt){
   if (g.viewportPaused) return;
   if (g.freeze > 0){ g.freeze -= dt; return; }   // hit-stop
   for (const s of g.stars){ s.y += s.v*dt; if (s.y > H){ s.y = -2; s.x = Math.random()*W; } }
+  for(const w of(g.incomingWords||[]))w.y=Math.min(w.targetY,w.y+155*dt);
   g.wordT += dt;
   const siege = true, rules = variantRules(g.variant);
   const eff = g.speed + Math.min(rules.hesitationCap,g.wordT*rules.hesitationAccel);
   g.eff = eff;
-  const now = performance.now(), descentActive = now >= (g.waveGraceUntil || 0);
+  const now = performance.now(), currentTarget=g.words.find(w=>!w.resolved&&w.order===g.idx);
+  const descentActive = now >= (g.waveGraceUntil || 0) && !(currentTarget&&now<(currentTarget.sweepPauseUntil||0));
   const moveDir = (moveInput.right?1:0)-(moveInput.left?1:0),shipBeforeX=g.ship.x;
   if (moveDir){
     g.ship.x = Math.max(16,Math.min(W-16,g.ship.x+moveDir*330*dt));
@@ -2294,7 +2443,7 @@ function update(dt){
   const bankSpend = siege ? Math.min(rawStep,g.recoilBank || 0) : 0;
   if (bankSpend){ g.recoilBank -= bankSpend; updateReserveHud(); }
   const fullStep = rawStep-bankSpend;
-  const target = g.words.find(w => !w.resolved && w.order === g.idx);
+  const target = currentTarget;
   if (target && siege){
     if (!Number.isFinite(target.threatY)) target.threatY = target.y;
     target.threatY += fullStep;
@@ -2443,7 +2592,7 @@ function drawStormAt(field,drawX){
   frost.addColorStop(.42,'rgba(121,232,226,'+(.16*fade)+')');
   frost.addColorStop(1,'rgba(83,108,193,0)');
   ctx.fillStyle=frost;ctx.beginPath();ctx.arc(0,0,field.radius,0,Math.PI*2);ctx.fill();
-  ctx.rotate(spin);ctx.strokeStyle='#79e8e2';ctx.lineWidth=2.4;ctx.globalAlpha=.7*fade;
+  ctx.save();ctx.rotate(spin);ctx.strokeStyle='#79e8e2';ctx.lineWidth=2.4;ctx.globalAlpha=.7*fade;
   for(const scale of[.38,.68,.94]){
     ctx.beginPath();ctx.arc(0,0,field.radius*scale,-Math.PI*.18,Math.PI*.72);ctx.stroke();
     ctx.rotate(Math.PI*.72);
@@ -2454,7 +2603,29 @@ function drawStormAt(field,drawX){
     const x=Math.cos(a)*r,y=Math.sin(a)*r*.72,len=7+field.rpm*2;
     ctx.beginPath();ctx.moveTo(x-len*.55,y-len*.25);ctx.lineTo(x+len*.55,y+len*.25);ctx.stroke();
   }
+  ctx.restore();
+  const dir=Math.sign(field.direction||field.vx||0);
+  if(dir){
+    const ax=dir*field.radius*.68,ay=-field.radius*.14;
+    ctx.globalAlpha=.95*fade;ctx.strokeStyle='#e8ffff';ctx.fillStyle='#b5fffa';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(ax-dir*28,ay);ctx.lineTo(ax,ay);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax-dir*13,ay-9);ctx.lineTo(ax-dir*13,ay+9);ctx.closePath();ctx.fill();
+  }
   ctx.globalAlpha=.95*fade;ctx.fillStyle='#e8ffff';ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+
+function drawBigWingSweep(sweep){
+  const q=Math.max(0,Math.min(1,sweep.t/sweep.life)),fade=Math.min(1,(1-q)*2.4),dir=sweep.direction||1;
+  ctx.save();ctx.translate(sweep.x,sweep.y);ctx.rotate(dir*.08);ctx.globalCompositeOperation='screen';
+  ctx.globalAlpha=.18*fade;ctx.fillStyle='#73d5ee';ctx.beginPath();ctx.ellipse(0,18,SWEEP_CORRIDOR*.72,82,0,0,Math.PI*2);ctx.fill();
+  const trail=ctx.createLinearGradient(0,18,0,145);trail.addColorStop(0,'rgba(232,255,255,.78)');trail.addColorStop(1,'rgba(115,213,238,0)');
+  ctx.globalAlpha=.8*fade;ctx.fillStyle=trail;ctx.beginPath();ctx.moveTo(-22,15);ctx.lineTo(-48,138);ctx.lineTo(0,92);ctx.lineTo(48,138);ctx.lineTo(22,15);ctx.closePath();ctx.fill();
+  ctx.globalAlpha=.98*fade;ctx.shadowColor='#9fe9fb';ctx.shadowBlur=28;ctx.fillStyle='#dffcff';ctx.strokeStyle='#fff4b8';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,-58);ctx.lineTo(-22,-14);ctx.lineTo(-76,12);ctx.lineTo(-58,30);ctx.lineTo(-17,22);
+  ctx.lineTo(0,52);ctx.lineTo(17,22);ctx.lineTo(58,30);ctx.lineTo(76,12);ctx.lineTo(22,-14);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle='#5ee6df';ctx.beginPath();ctx.moveTo(0,-43);ctx.lineTo(-9,5);ctx.lineTo(0,17);ctx.lineTo(9,5);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#e8ffff';ctx.lineWidth=4;for(const x of[-46,-18,18,46]){ctx.beginPath();ctx.moveTo(x,18);ctx.lineTo(x,55);ctx.stroke();}
+  ctx.restore();
 }
 
 function draw(){
@@ -2496,6 +2667,29 @@ function draw(){
     }
     ctx.globalAlpha=1;ctx.lineWidth=1;
   }
+  if((g.incomingWords||[]).length){
+    ctx.save();ctx.font='13px "Cascadia Mono", Consolas, monospace';ctx.textBaseline='middle';
+    for(const w of g.incomingWords){
+      const visible=Math.max(0,Math.min(1,(w.y+36)/80));
+      ctx.globalAlpha=.16+.34*visible;ctx.fillStyle='rgba(36,46,54,.82)';ctx.strokeStyle='rgba(151,181,190,.58)';ctx.lineWidth=1;
+      ctx.fillRect(w.x,w.y,w.w,w.h);ctx.strokeRect(w.x,w.y,w.w,w.h);
+      ctx.fillStyle='#8ca7ad';ctx.fillText(w.text,w.x+11,w.y+w.h/2+1);
+    }
+    ctx.globalAlpha=.75;ctx.fillStyle='#9fb9c0';ctx.font='9px "Cascadia Mono", Consolas, monospace';
+    ctx.fillText((g.preloadedItem&&g.preloadedItem.boss?'BOSS INBOUND':'NEXT WAVE INBOUND'),10,116);ctx.restore();
+  }
+  if(g.confirmFlash){
+    const age=(performance.now()-g.confirmFlash.at)/1000;
+    if(age<g.confirmFlash.life){
+      const q=age/g.confirmFlash.life,fade=1-q,r=18+q*38;
+      ctx.save();ctx.globalCompositeOperation='screen';ctx.translate(g.confirmFlash.x,g.confirmFlash.y);
+      ctx.globalAlpha=.3*fade;ctx.fillStyle=g.confirmFlash.correct?'#9fe9fb':'#ff5a70';ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=.95*fade;ctx.strokeStyle=g.confirmFlash.correct?'#e8ffff':'#ff6e7f';ctx.lineWidth=2+5*fade;
+      ctx.beginPath();ctx.arc(0,0,r*.72,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<8;i++){const a=i*Math.PI/4,len=22+q*24;ctx.beginPath();ctx.moveTo(Math.cos(a)*9,Math.sin(a)*9);ctx.lineTo(Math.cos(a)*len,Math.sin(a)*len);ctx.stroke();}
+      ctx.restore();
+    }
+  }
   ctx.textBaseline = 'middle';
   ctx.font = '15px "Cascadia Mono", Consolas, monospace';
   const deadlineY = H - 64, pressureY = threatLineY();
@@ -2521,7 +2715,7 @@ function draw(){
       ctx.fillStyle=g.typePrefix?'#5ee6df':(g.variant==='B'?'#9f9af4':'#73d5ee'); ctx.font='11px "Cascadia Mono", Consolas, monospace';
       const stormActive=isStormTrial()&&(g.wakeNodes||[]).length>0;
       const stormReady=isStormTrial()&&(g.stormCharge||0)>=STORM_READY_HITS;
-      const coreText=g.typePrefix?g.typePrefix.toUpperCase():stormActive?(g.experiment==='B'?'STEER':'DRIFT'):stormReady?'READY':'COOL';
+      const coreText=g.typePrefix?g.typePrefix.toUpperCase():stormActive?(g.experiment==='B'?'STEER':'LOCKED'):stormReady?'SWEEP':'COOL';
       ctx.fillText(coreText,coreX-ctx.measureText(coreText).width/2,coreY-3);
       const resourceRatio=isStormTrial()?Math.max(0,Math.min(1,(g.stormCharge||0)/STORM_READY_HITS))
         :Math.max(0,Math.min(1,((g.escortAmmo||0)/MAX_WING_UNITS+(g.coolerLevel||0)/9)/2));
@@ -2530,7 +2724,7 @@ function draw(){
       ctx.lineWidth=1; ctx.fillStyle=resourceRatio>=1?'#d7ba7d':(g.variant==='B'?'rgba(159,154,244,.8)':'rgba(115,213,238,.85)');
       ctx.font='9px "Cascadia Mono", Consolas, monospace';
       const resourceText=isStormTrial()
-        ?stormActive?(g.experiment==='B'?'◀ STEER ▶':'STORM ACTIVE'):stormReady?'◀ CAST ▶':'STORM '+(g.stormCharge||0)+'/'+STORM_READY_HITS
+        ?stormActive?(g.experiment==='B'?'◀ WAKE ▶':'WAKE ACTIVE'):stormReady?'◀ SWEEP ▶':'SWEEP '+(g.stormCharge||0)+'/'+STORM_READY_HITS
         :'W'+(g.wingUnits||0)+' · S'+(g.coolerLevel||0);
       ctx.fillText(resourceText,coreX-ctx.measureText(resourceText).width/2,coreY+11);
     }
@@ -2646,6 +2840,14 @@ function draw(){
     ctx.beginPath(); ctx.moveTo(shot.x,shot.y); ctx.lineTo(shot.x-shot.vx/d*24,shot.y-shot.vy/d*24); ctx.stroke();
   }
   ctx.shadowBlur=0; ctx.lineWidth=1;
+  for(const absorb of(g.sweepAbsorbs||[])){
+    const q=Math.max(0,Math.min(1,absorb.t/absorb.life)),mx=(absorb.sx+absorb.tx)/2,arcY=Math.min(absorb.sy,absorb.ty)-72;
+    const omt=1-q,x=omt*omt*absorb.sx+2*omt*q*mx+q*q*absorb.tx,y=omt*omt*absorb.sy+2*omt*q*arcY+q*q*absorb.ty;
+    ctx.save();ctx.globalAlpha=(1-q)*.85;ctx.strokeStyle='#b5fffa';ctx.shadowColor='#79e8e2';ctx.shadowBlur=14;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(absorb.sx,absorb.sy);ctx.quadraticCurveTo(mx,arcY,absorb.tx,absorb.ty);ctx.stroke();
+    ctx.fillStyle='#e8ffff';ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+  for(const sweep of(g.sweeps||[]))drawBigWingSweep(sweep);
   // lock brackets on the current target
   if (g.lock){
     const t = g.lock, tx = wordVisualX(t), ty = wordVisualY(t), c = 7;
@@ -2764,6 +2966,10 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
     const side = e.key === 'ArrowLeft' ? 'left' : 'right';
     if(e.shiftKey&&isStormTrial()){castStorm(side==='left'?-1:1,'keyboard');return;}
+    if(isStormTrial()&&(g.stormCharge||0)>=STORM_READY_HITS&&performance.now()-(g.stormHintAt||0)>900){
+      g.stormHintAt=performance.now();$('msg').innerHTML='<span style="color:var(--gold)">HOLD SHIFT + '+(side==='left'?'←':'→')+' TO CAST SWEEP</span> · arrow alone still dodges';
+      tEv('storm_hint',{side,charge:g.stormCharge,scene:traceScene()});
+    }
     if (!moveInput[side]){
       const nudge = side === 'left' ? -20 : 20;
       const beforeNudge=g.ship.x;

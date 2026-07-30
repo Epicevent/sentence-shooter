@@ -1,2 +1,3 @@
 /traces/*.json
+/traces/relay/
 !/traces/.gitkeep

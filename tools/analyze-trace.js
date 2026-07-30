@@ -38,11 +38,12 @@ for (const f of files){
     ...E.filter(e => ['kill','miss','miss_suppressed','tab','hint','word_impact','wing_deploy','wing_damage',
       'cooling_volley','wake_drive','wake_node','wake_deflect','heat_phase_change','heat_volley_armed','heat_arrow_hit','heat_arrow_end',
       'heat_volley_end','assembly_launch','assembly_dock','score_break','thermal_clear_start','thermal_clear_end',
-      'escort_intercept_spent','wrong_shot','shot_reflect','ricochet_hit','thermal_sink'].includes(e.type)).map(e => e.t),
+      'escort_intercept_spent','wrong_shot','shot_reflect','ricochet_hit','thermal_sink','confirm_feedback','formation_preload',
+      'sweep_start','sweep_absorb','sweep_end'].includes(e.type)).map(e => e.t),
     ...S.filter(s => s.scene && s.scene.move_dir).map(s => s.t),
   ].sort((a,b)=>a-b);
   let gaps = []; for (let i=1;i<acts.length;i++) if (acts[i]-acts[i-1] > 5000) gaps.push([Math.round(acts[i-1]/1000), Math.round(acts[i]/1000)]);
-  const misses = E.filter(e => e.type==='miss').map(e => (e.k? e.k+'≠'+ (e.want||'?') + ' in ' : '') + (e.w||''));
+  const misses = E.filter(e => e.type==='miss').map(e => (e.mistake_kind?e.mistake_kind+':' : '')+(e.k? e.k+'≠'+ (e.want||'?') + ' in ' : '') + (e.w||''));
   const suppressedMisses = E.filter(e => e.type==='miss_suppressed');
   const jammedInputs = E.filter(e => e.type==='input_jammed');
   const items = E.filter(e => ['item_stock','item_gain','item_overflow','tab','shield_absorb'].includes(e.type));
@@ -67,6 +68,9 @@ for (const f of files){
   const wakeFieldRows = visual.flatMap(s => Array.isArray(s.scene.wakeFields) ? s.scene.wakeFields : []);
   const quenchBurstRows = visual.flatMap(s => Array.isArray(s.scene.quenchBursts) ? s.scene.quenchBursts : []);
   const assemblyFlightRows = visual.flatMap(s => Array.isArray(s.scene.assemblyFlights) ? s.scene.assemblyFlights : []);
+  const sweepRows = visual.flatMap(s => Array.isArray(s.scene.sweeps) ? s.scene.sweeps : []);
+  const incomingRows = visual.flatMap(s => Array.isArray(s.scene.incomingWords) ? s.scene.incomingWords : []);
+  const feedbackRows = visual.filter(s=>Array.isArray(s.scene.feedback));
   const heatPhases = E.filter(e => e.type === 'heat_phase_change' || e.type === 'heat_volley_armed');
   const thermalClears = E.filter(e => e.type === 'thermal_clear_end' && Number.isFinite(e.heat_before) && Number.isFinite(e.heat_after));
   const floorHeat = heatRows.map(row=>Number(row[2])||0);
@@ -87,6 +91,14 @@ for (const f of files){
   const overlapping = overlapAudits.filter(x => x.pairs.length);
   const maxOverlapPairs = overlapping.reduce((m,x)=>Math.max(m,x.pairs.length),0);
   const maxOverlapArea = overlapping.reduce((m,x)=>Math.max(m,...x.pairs.map(p=>p[2])),0);
+  const incomingOverlapAudits=visual.map(s=>{
+    const active=liveRows(s),incoming=(s.scene.incomingWords||[]).map(w=>[w[0],w[1],w[2],w[4],w[5]]),all=[...active,...incoming],pairs=[];
+    for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
+      const area=overlap(all[i],all[j]);if(area>0)pairs.push([all[i][0],all[j][0],Math.round(area)]);
+    }
+    return{t:s.t,pairs};
+  });
+  const incomingOverlaps=incomingOverlapAudits.filter(row=>row.pairs.length);
   const viewportEvents = E.filter(e => ['viewport','viewport_pause','viewport_resume'].includes(e.type)).map(e => ({
     t:e.t, type:e.type,
     from:e.from || null, to:e.to || (Number.isFinite(e.w) ? [e.w,e.h] : null),
@@ -145,7 +157,7 @@ for (const f of files){
     const end = nextStart?.t ?? overT;
     const inSegment = t => t >= start.t && (nextStart ? t < end : t <= end);
     const seg = visual.filter(s => inSegment(s.t));
-    const inputEvents = E.filter(e => ['key_input','tap_input','tab','cargo_capture','cargo_deliver','escort_fire'].includes(e.type) && inSegment(e.t));
+    const inputEvents = E.filter(e => ['key_input','tap_input','tab','focus_confirm','cargo_capture','cargo_deliver','escort_fire'].includes(e.type) && inSegment(e.t));
     const killsInSegment = E.filter(e => e.type === 'kill' && inSegment(e.t));
     const settlesInSegment = E.filter(e => e.type === 'settle' && inSegment(e.t));
     const eventOrder = e => Number.isInteger(e.order) ? e.order :
@@ -193,7 +205,7 @@ for (const f of files){
     for (let i=1;i<boundaries.length;i++) if (boundaries[i]-boundaries[i-1] > 5000)
       inputSilences.push([boundaries[i-1], boundaries[i], boundaries[i]-boundaries[i-1]]);
     return {
-      item:start.item || null, prompt:start.ask || null,
+      item:start.item || null, prompt:start.ask || null,sortie:start.sortie??null,wave:start.wave??null,boss:!!start.boss,streamed:!!start.streamed,
       sentence: [start.lead,...answerInitials.map(w => w[1])].filter(Boolean).join(' ')+(start.tail||''),
       offered:start.words.map(w=>w[1]), decoys:decoyInitials.map(w=>w[1]),
       start_t:start.t, end_t:end,
@@ -225,6 +237,7 @@ for (const f of files){
   console.log('visual settle lag ms: avg', avgSettle, '| p90', p90Settle, '| transition flush', forcedSettles+'/'+settles.length);
   console.log('mistake bursts: penalized', misses.length, '| blocked spam inputs', jammedInputs.length,
     '| score lost', E.filter(e=>e.type==='miss').reduce((n,e)=>n+(e.score_lost||0),0),
+    '| grammar/order',E.filter(e=>e.type==='miss'&&e.mistake_kind==='grammar').length+'/'+E.filter(e=>e.type==='miss'&&e.mistake_kind==='order').length,
     '| legacy suppressed keys', suppressedMisses.length);
   console.log('completed item pace: n', completedDurations.length,
     '| avg sec', completedAvg === null ? '-' : completedAvg.toFixed(1),
@@ -255,6 +268,9 @@ for (const f of files){
       '| dock flash samples', rewardRows.filter(row=>(row[8]||0)>0).length,
       '| wing deploy/cooling/shatter', [ev.wing_deploy||0,ev.cooling_volley||ev.wing_salvo||0,ev.wing_shatter||0].join('/'),
       '| storm charge/cast/steer/block', [ev.storm_charge||0,ev.storm_cast||0,ev.storm_steer||0,ev.storm_cast_blocked||0].join('/'),
+      '| sweep start/absorb/end', [ev.sweep_start||0,ev.sweep_absorb||0,ev.sweep_end||0].join('/'),
+      '| confirm flashes', ev.confirm_feedback||0,
+      '| preload/streamed/boss', [ev.formation_preload||0,sentenceStarts.filter(e=>e.streamed).length,sentenceStarts.filter(e=>e.boss).length].join('/'),
       '| wake node/deflect', [ev.wake_node||0,ev.wake_deflect||0].join('/'),
       '| heat arm/hit/contact/end', [(ev.heat_volley_armed||0)+(ev.heat_phase_change||0),ev.heat_arrow_hit||0,ev.heat_arrow_contact||0,ev.heat_arrow_end||0].join('/'),
       '| assembly launch/dock', [ev.assembly_launch||0,ev.assembly_dock||0].join('/'),
@@ -282,6 +298,13 @@ for (const f of files){
       '| max simultaneous', Math.max(...visual.map(s=>Array.isArray(s.scene.wakeFields)?s.scene.wakeFields.length:0)),
       '| moving samples',wakeFieldRows.filter(row=>Math.abs(Number(row[8])||0)>0).length,
       '| left/right samples',wakeFieldRows.filter(row=>(Number(row[9])||0)<0).length+'/'+wakeFieldRows.filter(row=>(Number(row[9])||0)>0).length);
+    if(sweepRows.length)console.log('BIG WING SWEEP: samples',sweepRows.length,
+      '| max cleared/cells',Math.max(...sweepRows.map(row=>Number(row[9])||0))+'/'+Math.max(...sweepRows.map(row=>Number(row[10])||0)),
+      '| measured speed max px/s',Math.max(...sweepRows.map(row=>Math.hypot(Number(row[3])||0,Number(row[4])||0))).toFixed(1),
+      '| visual confirm samples',feedbackRows.length);
+    if(incomingRows.length)console.log('streaming formation: samples',incomingRows.length,
+      '| visible samples',incomingRows.filter(row=>(Number(row[7])||0)>0).length,
+      '| overlap frames',incomingOverlaps.length,'| max overlap pairs',incomingOverlaps.reduce((m,row)=>Math.max(m,row.pairs.length),0));
     if(quenchBurstRows.length||thermalClears.length) console.log('physical clear waves: samples/end events',quenchBurstRows.length+'/'+thermalClears.length,
       '| total measured heat before/after',thermalClears.reduce((n,e)=>n+e.heat_before,0).toFixed(3)+'/'+thermalClears.reduce((n,e)=>n+e.heat_after,0).toFixed(3),
       '| escort intercepts spent',ev.escort_intercept_spent||0);
